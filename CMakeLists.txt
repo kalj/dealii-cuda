@@ -31,13 +31,7 @@ ENDIF()
 
 SITE_NAME(HOSTNAME)
 
-IF(HOSTNAME STREQUAL "k20.it.uu.se")
-MESSAGE("-- Running on k20 computer")
-SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch=sm_35)
-ELSE()
-MESSAGE("-- NOT running on k20 computer")
-SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch=sm_20)
-ENDIF()
+MESSAGE("-- Setting up for Compute Capability 3.5")
 
 SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++11 -lineinfo -Xptxas -v)
 

@@ -41,7 +41,7 @@
 
 using namespace dealii;
 
-#define USE_HANGING_NODES
+// #define USE_HANGING_NODES
 #define N_ITERATIONS 100
 
 #ifdef DEGREE_FE

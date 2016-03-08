@@ -44,7 +44,7 @@ using namespace dealii;
 
 typedef double number;
 
-#define USE_HANGING_NODES
+// #define USE_HANGING_NODES
 
 //-------------------------------------------------------------------------
 // problem
