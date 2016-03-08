@@ -15,7 +15,7 @@
 #include "atomic.cuh"
 
 #include "gpu_array.cuh"
-#include "hanging_nodes.cuh"
+// #include "hanging_nodes.cuh"
 
 // object which lives on the Gpu which contains methods for element local
 // operations, such as gradient and value evaluation. This is created for each
@@ -264,8 +264,8 @@ __device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::read_dof_values(const 
 #endif // NO_SHARED_DOFS
   values[idx] = src[srcidx];
 
-  if(constraint_mask)
-    resolve_hanging_nodes_shmem<dim,fe_degree,NOTRANSPOSE>(values,constraint_mask);
+  // if(constraint_mask)
+  //   resolve_hanging_nodes_shmem<dim,fe_degree,NOTRANSPOSE>(values,constraint_mask);
 }
 
 
@@ -277,8 +277,8 @@ __device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::read_dof_values(const 
 template <typename Number, int dim, int fe_degree>
 __device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::distribute_local_to_global(Number *dst)
 {
-  if(constraint_mask)
-    resolve_hanging_nodes_shmem<dim,fe_degree,TRANSPOSE>(values,constraint_mask);
+  // if(constraint_mask)
+  //   resolve_hanging_nodes_shmem<dim,fe_degree,TRANSPOSE>(values,constraint_mask);
 
 #ifdef NO_SHARED_DOFS
   const unsigned int  i = (threadIdx.x%n_q_points_1d)+n_q_points_1d*threadIdx.y+n_q_points_1d*n_q_points_1d*threadIdx.z;
@@ -505,8 +505,8 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Num
     values_dofs[i] = src[srcidx];
   }
 
-  if(constraint_mask)
-    resolve_hanging_nodes_pmem<dim,fe_degree,NOTRANSPOSE>(values_dofs,constraint_mask);
+  // if(constraint_mask)
+  //   resolve_hanging_nodes_pmem<dim,fe_degree,NOTRANSPOSE>(values_dofs,constraint_mask);
 }
 
 
@@ -517,8 +517,8 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Num
 template <typename Number, int dim, int fe_degree>
 __device__ void FEEvaluationGpu<Number,dim,fe_degree>::distribute_local_to_global(Number *dst)
 {
-  if(constraint_mask)
-    resolve_hanging_nodes_pmem<dim,fe_degree,TRANSPOSE>(values_dofs,constraint_mask);
+  // if(constraint_mask)
+  //   resolve_hanging_nodes_pmem<dim,fe_degree,TRANSPOSE>(values_dofs,constraint_mask);
 
 #ifdef NO_SHARED_DOFS
   for(int i=0; i<n_local_dofs; ++i) {

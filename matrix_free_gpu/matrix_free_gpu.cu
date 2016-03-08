@@ -13,7 +13,7 @@
 
 // #include "matrix_free_gpu.h"
 #include "coloring.h"
-#include "hanging_nodes.cuh"
+// #include "hanging_nodes.cuh"
 #include "cuda_utils.cuh"
 
 
@@ -152,10 +152,10 @@ void ReinitHelper<dim,Number>::get_cell_data(const T& cell, const unsigned int c
     lexicographic_dof_indices[i] = local_dof_indices[lexicographic_inv[i]];
 
   // setup hanging nodes
-  setup_hanging_node_constraints<dim> (constraint_mask_host[cellid],
-                                       lexicographic_dof_indices,
-                                       fe_degree,
-                                       cell,cellid);
+  // setup_hanging_node_constraints<dim> (constraint_mask_host[cellid],
+  //                                      lexicographic_dof_indices,
+  //                                      fe_degree,
+  //                                      cell,cellid);
 
   memcpy(&loc2glob_host[cellid*dofs_per_cell],&lexicographic_dof_indices[0],dofs_per_cell*sizeof(unsigned int));
 
