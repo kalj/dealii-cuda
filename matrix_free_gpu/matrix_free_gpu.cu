@@ -326,7 +326,7 @@ reinit(const Mapping<dim>        &mapping,
     CUDA_CHECK_SUCCESS(cudaMemcpyToSymbol(shape_gradient, &shape_info.shape_gradient_number[0],size_shape_values));
   }
 
-  setup_constraint_weights(fe_degree);
+//  setup_constraint_weights(fe_degree);
 
   //---------------------------------------------------------------------------
   // cell-specific stuff (indices, JxW, inverse jacobian, quadrature points, etc)
