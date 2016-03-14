@@ -144,15 +144,8 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
             << std::endl;
 
 
-#ifdef NO_SHARED_DOFS
-  const unsigned int ndofs = dof_handler.get_tria().n_active_cells()*ipowf(fe_degree+1,dim);
-
-  dst.reinit (ndofs);
-  src.reinit (ndofs);
-#else
   dst.reinit (system_matrix.n());
   src.reinit (system_matrix.n());
-#endif
 
   setup_time += time.wall_time();
   time_details << "Setup matrix-free system   (CPU/wall) "
@@ -179,9 +172,6 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
   time.stop();
 
-#ifdef FINE_GRAIN_TIMER
-  system_matrix.print_fine_grain_timers();
-#endif
 
   std::cout << "Time solve ("
             << n_iterations

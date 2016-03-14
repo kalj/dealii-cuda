@@ -39,14 +39,7 @@ IF(CMAKE_BUILD_TYPE STREQUAL "DEBUG")
   SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -G)
 ENDIF()
 
-# ADD_SUBDIRECTORY(matrix_free_gpu)
 INCLUDE_DIRECTORIES(matrix_free_gpu)
-
-# CUDA_ADD_EXECUTABLE(poisson poisson.cu)
-# TARGET_LINK_LIBRARIES(poisson ${LIBRARIES} MatrixFreeGpu)
-
-# CUDA_ADD_EXECUTABLE(bmop bmop.cu)
-# TARGET_LINK_LIBRARIES(bmop ${LIBRARIES} MatrixFreeGpu)
 
 CUDA_ADD_EXECUTABLE(poisson poisson.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
 TARGET_LINK_LIBRARIES(poisson ${LIBRARIES})

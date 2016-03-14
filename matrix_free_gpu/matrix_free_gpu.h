@@ -171,11 +171,8 @@ public:
   }
 
   template <typename LocOp>
-  void cell_loop_shmem(GpuVector<Number> &dst, const GpuVector<Number> &src,  const std::vector<LocOp> &loc_op) const;
+  void cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,  const std::vector<LocOp> &loc_op) const;
 
-
-  template <typename LocOp>
-  void cell_loop_pmem(GpuVector<Number> &dst, const GpuVector<Number> &src,  const std::vector<LocOp> &loc_op) const;
 
 
   void copy_constrained_values(GpuVector <Number> &dst, const GpuVector<Number> &src) const;
@@ -232,24 +229,11 @@ __global__ void apply_kernel_shmem (Number                          *dst,
 }
 
 
-template <typename LocOp,int dim, typename Number>
-__global__ void apply_kernel_pmem (Number                          *dst,
-                              const Number                    *src,
-                              const LocOp                    loc_op,
-                              const typename MatrixFreeGpu<dim,Number>::GpuData gpu_data)
-{
-
-  const unsigned int cell = threadIdx.x + blockDim.x*(blockIdx.x+gridDim.x*blockIdx.y);
-
-  if(cell < gpu_data.n_cells) {
-    loc_op.apply(dst,src,&gpu_data,cell);
-  }
-}
 
 
 template <int dim, typename Number>
 template <typename LocOp>
-void MatrixFreeGpu<dim,Number>::cell_loop_shmem(GpuVector<Number> &dst, const GpuVector<Number> &src,
+void MatrixFreeGpu<dim,Number>::cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,
                                           const std::vector<LocOp> &loc_op) const
 {
   for(int c = 0; c < num_colors; ++c) {
@@ -260,18 +244,6 @@ void MatrixFreeGpu<dim,Number>::cell_loop_shmem(GpuVector<Number> &dst, const Gp
   }
 }
 
-template <int dim, typename Number>
-template <typename LocOp>
-void MatrixFreeGpu<dim,Number>::cell_loop_pmem(GpuVector<Number> &dst, const GpuVector<Number> &src,
-                                          const std::vector<LocOp> &loc_op) const
-{
-  for(int c = 0; c < num_colors; ++c) {
-
-    apply_kernel_pmem<LocOp,dim,Number> <<<grid_dim[c],block_dim[c]>>> (dst.getData(), src.getDataRO(),
-                                                                         loc_op[c], get_gpu_data(c));
-    CUDA_CHECK_LAST;
-  }
-}
 
 #include "matrix_free_gpu.cu"
 

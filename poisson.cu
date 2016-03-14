@@ -243,9 +243,6 @@ void LaplaceProblem<dim,fe_degree>::solve ()
             preconditioner);
 
   time.stop();
-#ifdef FINE_GRAIN_TIMER
-  system_matrix.print_fine_grain_timers();
-#endif
 
   std::cout << "Time solve ("
             << solver_control.last_step()

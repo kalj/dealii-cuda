@@ -11,7 +11,6 @@
 #include <deal.II/grid/filtered_iterator.h>
 #include <deal.II/base/graph_coloring.h>
 
-// #include "matrix_free_gpu.h"
 #include "coloring.h"
 // #include "hanging_nodes.cuh"
 #include "cuda_utils.cuh"

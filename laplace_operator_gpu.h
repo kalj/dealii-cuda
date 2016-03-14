@@ -144,14 +144,6 @@ public:
 
 
 
-#ifdef FINE_GRAIN_TIMER
-  float *t_read;
-  float *t_write;
-  float *t_comp;
-  unsigned int max_ncells;
-  void print_fine_grain_timers() const;
-#endif
-
 private:
 
   void evaluate_coefficient();
@@ -215,37 +207,14 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
 {
   typename MatrixFreeGpu<dim,Number>::AdditionalData additional_data;
 
-#ifdef MATRIX_FREE_COLOR
   additional_data.use_coloring = true;
-#else
-  additional_data.use_coloring = false;
-#endif
 
-#ifdef MATRIX_FREE_PAR_IN_ELEM
   additional_data.parallelization_scheme = MatrixFreeGpu<dim,Number>::scheme_par_in_elem;
-#else
-  additional_data.parallelization_scheme = MatrixFreeGpu<dim,Number>::scheme_par_over_elems;
-#endif
-
 
   additional_data.mapping_update_flags = (update_gradients | update_JxW_values |
                                           update_quadrature_points);
   data.reinit (dof_handler, constraints, QGauss<1>(fe_degree+1),
                additional_data);
-
-
-#ifdef FINE_GRAIN_TIMER
-  max_ncells = 0;
-  for(unsigned int c=0; c < data.num_colors; c++) {
-    if(data.n_cells[c] > max_ncells)
-      max_ncells = data.n_cells[c];
-  }
-
-  CUDA_CHECK_SUCCESS(cudaMalloc(&t_read, max_ncells*sizeof(float)));
-  CUDA_CHECK_SUCCESS(cudaMalloc(&t_write, max_ncells*sizeof(float)));
-  CUDA_CHECK_SUCCESS(cudaMalloc(&t_comp, max_ncells*sizeof(float)));
-#endif
-
 
   evaluate_coefficient();
 }
@@ -264,11 +233,7 @@ __global__ void local_coeff_eval (Number                          *coeff,
     const GpuArray<dim,Number> *qpts = gpu_data.quadrature_points;
 
     for (unsigned int q=0; q<n_q_points; ++q) {
-#ifdef MATRIX_FREE_PAR_IN_ELEM
       const unsigned int idx = cell*n_q_points + q;
-#else
-      const unsigned int idx = cell + gpu_data.n_cells*q;
-#endif
       coeff[idx] =  coefficient_function::value(qpts[idx]);
     }
 
@@ -339,11 +304,6 @@ struct LocalOperator {
   static const unsigned int n_dofs_1d = fe_degree+1;
   static const unsigned int n_local_dofs = ipow<fe_degree+1,dim>::val;
   static const unsigned int n_q_points = ipow<fe_degree+1,dim>::val;
-#ifdef FINE_GRAIN_TIMER
-  float *t_read;
-  float *t_write;
-  float *t_comp;
-#endif
 
   template <typename FEE>
   __device__ inline void quad_operation(FEE *phi, const unsigned int q,const unsigned int global_q) const
@@ -354,86 +314,31 @@ struct LocalOperator {
   __device__ void apply (Number                          *dst,
                           const Number                    *src,
                           const typename MatrixFreeGpu<dim,Number>::GpuData *gpu_data,
-#ifdef MATRIX_FREE_PAR_IN_ELEM
                           const unsigned int cell,
                           SharedData<dim,Number> *shdata) const
-#else
-                          const unsigned int cell) const
-#endif
   {
-#ifdef FINE_GRAIN_TIMER
 
-#ifdef MATRIX_FREE_PAR_IN_ELEM
-    const bool flag = threadIdx.x==0 && threadIdx.y==0 && threadIdx.z==0;
-#else
-    const bool flag = true;
-#endif
-
-    clock_t start, stop;
-#endif
-
-#ifdef MATRIX_FREE_PAR_IN_ELEM
     FEEvaluationGpuPIE<Number,dim,fe_degree> phi (cell, gpu_data, shdata);
-#else
-    FEEvaluationGpu<Number,dim,fe_degree> phi (cell, gpu_data);
-#endif
-
-#ifdef FINE_GRAIN_TIMER
-    if(flag) {
-      start = clock();
-    }
-#endif
 
     phi.read_dof_values(src);
 
-#ifdef MATRIX_FREE_PAR_IN_ELEM
     __syncthreads();
-#endif
-
-#ifdef FINE_GRAIN_TIMER
-    if(flag) {
-      stop = clock();
-      t_read[cell] += stop - start;
-
-      start = clock();
-    }
-#endif
 
     phi.evaluate (false,true,false);
-#ifdef MATRIX_FREE_PAR_IN_ELEM
+
+    // no synch needed since local operation works on 'own' value
     // __syncthreads();
-#endif
 
     // apply the local operation above
     phi.apply_quad_point_operations(this);
 
-#ifdef MATRIX_FREE_PAR_IN_ELEM
     __syncthreads();
-#endif
 
     phi.integrate (false,true);
-#ifdef MATRIX_FREE_PAR_IN_ELEM
+
     __syncthreads();
-#endif
-
-#ifdef FINE_GRAIN_TIMER
-    if(flag) {
-      stop = clock();
-      t_comp[cell] += stop - start;
-
-      start = clock();
-    }
-#endif
 
     phi.distribute_local_to_global (dst);
-
-#ifdef FINE_GRAIN_TIMER
-    if(flag) {
-
-      stop = clock();
-      t_write[cell] += stop - start;
-    }
-#endif
   }
 };
 
@@ -445,27 +350,13 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (GpuVector<Number>       &ds
                                                      const GpuVector<Number> &src) const
 {
 
-#ifdef FINE_GRAIN_TIMER
-  CUDA_CHECK_SUCCESS(cudaMemset(t_read, 0, max_ncells*sizeof(float)));
-  CUDA_CHECK_SUCCESS(cudaMemset(t_write, 0, max_ncells*sizeof(float)));
-  CUDA_CHECK_SUCCESS(cudaMemset(t_comp, 0, max_ncells*sizeof(float)));
-#endif
 
   std::vector <LocalOperator<dim,fe_degree,Number> > loc_op(data.num_colors);
   for(int c=0; c<data.num_colors; c++) {
     loc_op[c].coefficient = coefficient[c].getDataRO();
-#ifdef FINE_GRAIN_TIMER
-    loc_op[c].t_read = t_read;
-    loc_op[c].t_write = t_write;
-    loc_op[c].t_comp = t_comp;
-#endif
   }
 
-#ifdef MATRIX_FREE_PAR_IN_ELEM
-  data.cell_loop_shmem (dst,src,loc_op);
-#else
-  data.cell_loop_pmem (dst,src,loc_op);
-#endif
+  data.cell_loop (dst,src,loc_op);
 
   data.copy_constrained_values(dst,src);
 
@@ -501,71 +392,6 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::memory_consumption () const
   }
   return apa;
 }
-
-#ifdef FINE_GRAIN_TIMER
-
-void compute_stats(float &mean, float &var, float &max, const float *arr_dev, const int n) {
-
-  float *arr = new float[n];
-  CUDA_CHECK_SUCCESS(cudaMemcpy(arr,arr_dev,n*sizeof(float),
-                                cudaMemcpyDeviceToHost));
-
-  const float freq = 1100e6;
-
-  float sum = 0;
-  float sqsum = 0;
-  max = 0;
-
-  for(int i = 0; i < n; ++i) {
-    max = arr[i] > max ? arr[i] : max;
-
-    sum += arr[i]/freq*1000;
-    sqsum += arr[i]*arr[i]/freq*1000/freq*1000;
-
-  }
-
-  mean = sum / n;
-  var = sqsum/n - mean*mean;
-  max = max/freq*1000;
-
-  delete[] arr;
-}
-
-template <int dim, int fe_degree, typename Number>
-void
-LaplaceOperatorGpu<dim,fe_degree,Number>::print_fine_grain_timers () const
-{
-  float read_mean, read_var, read_max, write_mean, write_var,
-    write_max, comp_mean, comp_var, comp_max;
-  compute_stats(read_mean,read_var,read_max,t_read,max_ncells);
-  compute_stats(write_mean,write_var,write_max,t_write,max_ncells);
-  compute_stats(comp_mean,comp_var,comp_max,t_comp,max_ncells);
-
-
-  // printf("Read: %g ±%g ms\n",
-  //        read_mean,
-  //        sqrt(read_var));
-  // printf("Write: %g ±%g ms\n",
-  //        write_mean,
-  //        sqrt(write_var));
-  // printf("Compute: %g ±%g ms\n",
-  //        comp_mean,
-  //        sqrt(comp_var));
-
-
-  float tot = read_mean + write_mean + comp_mean;
-
-  printf("Read: %g (%.2g %%)\n",
-         read_mean,
-         100*read_mean/tot);
-  printf("Write: %g (%.2g %%)\n",
-         write_mean,
-         write_mean*100/tot);
-  printf("Compute: %g (%.2g %%)\n",
-         comp_mean,
-         comp_mean*100/tot);
-}
-#endif
 
 
 #endif /* _LAPLACE_OPERATOR_GPU_H */
