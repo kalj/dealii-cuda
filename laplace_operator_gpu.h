@@ -311,7 +311,7 @@ struct LocalOperator {
 
     __syncthreads();
 
-    phi.evaluate (false,true,false);
+    phi.evaluate (false,true);
 
     // no synch needed since local operation works on 'own' value
     // __syncthreads();
