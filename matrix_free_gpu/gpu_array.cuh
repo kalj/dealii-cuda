@@ -3,6 +3,11 @@
 
 #include "maybecuda.h"
 
+/*
+ * This is essentially a GPU version of Point, i.e. a constant-length vector / tuple.
+ *
+ */
+
 template <int size, typename Number>
 class GpuArray {
 public:

@@ -16,13 +16,16 @@
 #include "cuda_utils.cuh"
 
 
-
-// object living on the CPU, but with most of its member data residing on the
-// gpu. Here, we keep all the data related to a matrix-free evaluation.
+//=============================================================================
+// MatrixFreeGpu is an object living on the CPU, but with most of its member
+// data residing on the gpu. Here, we keep all the data related to a matrix-free
+// evaluation.
+//=============================================================================
 
 
 #define MATRIX_FREE_BKSIZE_CONSTR 128
 
+// helper object for (re)initialization of main class
 template <int dim, typename Number>
 class ReinitHelper {
 private:
@@ -39,7 +42,6 @@ private:
   // local buffers
   std::vector<types::global_dof_index> local_dof_indices;
 
-  // TODO: fix update flags
   FEValues<dim> fe_values;
   // get the translation from default dof numbering to a lexicographic one
   const std::vector<unsigned int> &lexicographic_inv;
@@ -49,6 +51,7 @@ private:
   const unsigned int dofs_per_cell;
   const unsigned int qpts_per_cell;
 
+  // TODO: fix update flags
   const UpdateFlags &update_flags;
 public:
   ReinitHelper(MatrixFreeGpu<dim,Number>                              *data,
@@ -190,7 +193,7 @@ void transpose(T *dst, const T *src, const unsigned int N, const unsigned int M)
       dst[j*N+i] = src[i*M+j];
 }
 
-// XXX: if a unified gpuarray / point would exist, only need one template argument
+// TODO: if a unified gpuarray / point would exist, only need one template argument
 template <typename T>
 void transpose_inplace(std::vector<T> &a_host,
                        const unsigned int n, const unsigned int m)
@@ -270,6 +273,10 @@ void ReinitHelper<dim,Number>::alloc_and_copy_arrays(const unsigned int c)
   alloc_and_copy(&data->constraint_mask[c],constraint_mask_host,n_cells);
 }
 
+
+//=============================================================================
+// Initialization function
+//=============================================================================
 
 template <int dim, typename Number>
 void MatrixFreeGpu<dim,Number>::
@@ -451,6 +458,11 @@ void MatrixFreeGpu<dim,Number>::free()
   if(constrained_dofs != NULL)  CUDA_CHECK_SUCCESS(cudaFree(constrained_dofs));
   constrained_dofs = NULL;
 }
+
+
+//=============================================================================
+// functions dealing with constraints
+//=============================================================================
 
 template <typename Number>
 __global__ void copy_constrained_dofs (Number              *dst,

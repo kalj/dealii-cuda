@@ -5,9 +5,6 @@
  *
  */
 
-// #include <cassert>
-// #include <fstream>
-
 #include <cfloat>
 
 #include "gpu_vec.h"
@@ -107,7 +104,6 @@ void GpuVector<Number>::reinit (const GpuVector<Number>& other,
   }
 }
 
-// cuda kernels
 template <typename Number>
 void GpuVector<Number>::resize (unsigned int n)
 {
@@ -127,64 +123,8 @@ void GpuVector<Number>::resize (unsigned int n)
 // Reduction operations
 //=============================================================================
 
-
-/*
-  Performance serial reduction:
-  bksize        time
-  1024          1.03
-  512           0.426
-  256           0.433
-  128           0.79
-  64            1.76
-  32            3.4
-  16            6.8
-
-  Performance parallel reduction, every s'th thread
-  1024          0.25
-  512           0.202
-  256           0.48
-
-  Performance parallel reduction, the bksize/s first threads
-  1024          0.203
-  512           0.206
-  256           0.499
-
-  Performance -||-, improved looping
-  1024          0.2003
-
-  Performance chunking (cs=2)
-  1024          0.131
-  512           0.124
-  256           0.272
-
-  Performance chunking (cs=4)
-  1024          0.103
-  512           0.085
-  256           0.153
-
-  Performance chunking (cs=8)
-  1024          0.100
-  512           0.083
-  256           0.093
-
-  Performance chunking (cs=16)
-  1024          0.091
-  512           0.084
-  256           0.084
-
-  Performance (cs=8), unroll from 32
-  1024          0.097
-  512           0.083
-  256           0.092
-
-*/
-
-#ifndef DOT_BKSIZE
 #define DOT_BKSIZE 512
-#endif
-#ifndef DOT_CHUNK_SIZE
 #define DOT_CHUNK_SIZE 8
-#endif
 
 template <typename Number>
 __device__ void dotWithinWarp(volatile Number *res_buf, int local_idx) {
@@ -215,17 +155,8 @@ __global__ void dot_prod(Number *res, const Number *v1, const Number *v2, const 
   }
 
   __syncthreads();
-  // if(local_idx == 0) {
-  //     Number contrib = 0;
-  //     for(int i = 0; i < DOT_BKSIZE; ++i) {
-  //         contrib += res_buf[i];
-  //     }
-  //     atomicAdd(res,contrib);
-  // }
+
   for(int s = DOT_BKSIZE/2; s>32; s=s>>1) {
-    // for(int s = DOT_BKSIZE/2; s>0; s=s>>1) {
-    // if(local_idx % s == 0)
-    // res_buf[local_idx] += res_buf[local_idx+s/2];
 
     if(local_idx < s)
       res_buf[local_idx] += res_buf[local_idx+s];
@@ -261,12 +192,8 @@ Number GpuVector<Number>::operator * (const GpuVector<Number> &v) const {
 
 // single vector reduction, e.g. all_zero, max, min, etc
 
-#ifndef SVR_BKSIZE
 #define SVR_BKSIZE 512
-#endif
-#ifndef SVR_CHUNK_SIZE
 #define SVR_CHUNK_SIZE 8
-#endif
 
 
 template <typename Number>

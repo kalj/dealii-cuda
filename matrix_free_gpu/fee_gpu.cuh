@@ -17,11 +17,16 @@
 #include "gpu_array.cuh"
 // #include "hanging_nodes.cuh"
 
-// object which lives on the Gpu which contains methods for element local
+//=============================================================================
+// Object which lives on the Gpu which contains methods for element local
 // operations, such as gradient and value evaluation. This is created for each
-// thread at each multiplication, but since creation only means setting up a few
-// pointers.
+// element at each multiplication, but since creation only means setting up a
+// few pointers, overhead is small.
+//=============================================================================
 
+
+// This is a base class containing common code and data. Subclasses implement
+// most operations.
 template <typename Number, int dim, int fe_degree>
 class FEEvaluationGpuBase
 {
@@ -48,9 +53,11 @@ protected:
 
   const unsigned int cellid;
 
+  // information on hanging node constraints
   const unsigned int constraint_mask;
 
 public:
+
   const GpuArray<dim,Number> *quadrature_points;
 
   __device__ FEEvaluationGpuBase(int cellid, const data_type *data)
@@ -69,6 +76,8 @@ public:
 // shmem version
 //=============================================================================
 
+// This implementation uses one thread per DoF in an element, and implements
+// this using Shared Memory. (PIE == Parallel In Element)
 
 template <typename Number, int dim, int fe_degree>
 class FEEvaluationGpuPIE : public FEEvaluationGpuBase<Number,dim,fe_degree>
@@ -102,25 +111,37 @@ private:
 public:
   const GpuArray<dim,Number> *quadrature_points;
 
+  // Constructor. Requires the cell id, the pointer to the data cache, and the
+  // pointer to the element local shared scratch data.
   __device__ FEEvaluationGpuPIE(int cellid, const data_type *data, SharedData<dim,Number> *shdata);
 
+  // read local values from the device-side array
   __device__ void read_dof_values(const Number *src);
+  // write them back
   __device__ void distribute_local_to_global(Number *dst);
 
+  // evaluate function values and gradients on quadrature points
   __device__ void evaluate(const bool evaluate_val,
-                           const bool evaluate_grad,
-                           const bool evaluate_lapl);
+                           const bool evaluate_grad);
 
+  // specify value or gradient at quadrature point
   __device__ void submit_value(const Number &val, const unsigned int q);
   __device__ void submit_gradient(const gradient_type &grad, const unsigned int q);
 
+  // get value or gradient at quadrature point
   __device__ Number get_value(const unsigned int q) const ;
   __device__ gradient_type get_gradient(const unsigned int q) const ;
 
-  __device__  const GpuArray<dim,Number> &get_quadrature_point(const unsigned int q) const ;
+  // get position of quadrature point
+  __device__  const GpuArray<dim,Number> &get_quadrature_point(const unsigned int q) const {
+    return quadrature_points[q*n_cells];
+  }
 
+  // integrate function values and/or gradients
   __device__ void integrate(const bool integrate_val, const bool integrate_grad);
 
+  // apply the function lop->quad_operation on all quadrature points (i.e. hide
+  // particularities of how to loop over quadrature points from user).
   template <typename LocOp>
   __device__ void apply_quad_point_operations(const LocOp *lop) {
     const unsigned int q = (threadIdx.x%n_dofs_1d)+n_dofs_1d*threadIdx.y+(dim==3 ?(n_dofs_1d*n_dofs_1d*threadIdx.z) : 0);
@@ -131,8 +152,8 @@ public:
 
 template <typename Number, int dim, int fe_degree>
 __device__ FEEvaluationGpuPIE<Number,dim,fe_degree>::FEEvaluationGpuPIE(int cellid,
-                                                                                      const data_type *data,
-                                                                                      SharedData<dim,Number> *shdata)
+                                                                        const data_type *data,
+                                                                        SharedData<dim,Number> *shdata)
   :
   FEEvaluationGpuBase<Number,dim,fe_degree>(cellid,data)
 {
@@ -147,17 +168,10 @@ __device__ FEEvaluationGpuPIE<Number,dim,fe_degree>::FEEvaluationGpuPIE(int cell
   }
 }
 
-template <typename Number, int dim, int fe_degree>
-inline
-__device__ const GpuArray<dim,Number>& FEEvaluationGpuPIE<Number,dim,fe_degree>::get_quadrature_point(const unsigned int q) const
-{
-  return quadrature_points[q*n_cells];
-}
 
 template <typename Number, int dim, int fe_degree>
 __device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::evaluate(const bool evaluate_val,
-                                                                                 const bool evaluate_grad,
-                                                                                 const bool evaluate_lapl)
+                                                                   const bool evaluate_grad)
 {
   if(evaluate_grad)
     TensorOpsShmem<dim,fe_degree+1,Number>::grad_at_quad_pts (gradients,values);

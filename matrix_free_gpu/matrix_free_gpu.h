@@ -22,6 +22,20 @@
 #include "cuda_utils.cuh"
 
 
+//=============================================================================
+// This implements a class for matrix-free computations on the GPU. It
+// essentially consists of the following functions:
+//
+// - reinit:    sets up the object with a new grid, usually after refinement
+// - cell_loop: performs the cell-local operations for all elements in
+//              parallel. the local operation to perform is passed as a
+//              read-only struct with a function 'apply' and, possibly some
+//              data, such as a cell-local coefficient values.
+// - set/copy_constrained_values: functions for assigning or copying values at
+//              the constrained DoFs (i.e. boundary values or hanging nodes).
+//=============================================================================
+
+
 
 #ifdef MATRIX_FREE_PAR_IN_ELEM
 #define MATRIX_FREE_BKSIZE_APPLY_DEF 1
@@ -36,10 +50,9 @@
 
 using namespace dealii;
 
-// forward declaration
+// forward declaration of initialization help class
 template <int dim, typename Number>
 class ReinitHelper;
-
 
 
 __constant__ double shape_values[(MAX_ELEM_DEGREE+1)*(MAX_ELEM_DEGREE+1)];
@@ -170,11 +183,14 @@ public:
     return data;
   }
 
+  // apply the local operation on each element in parallel. loc_op is a vector
+  // with one entry for each color. That is usually the same operator, but with
+  // different local data (e.g. coefficient values).
   template <typename LocOp>
-  void cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,  const std::vector<LocOp> &loc_op) const;
+  void cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,
+                 const std::vector<LocOp> &loc_op) const;
 
-
-
+  // set/copy values at constrained DoFs
   void copy_constrained_values(GpuVector <Number> &dst, const GpuVector<Number> &src) const;
   void set_constrained_values(GpuVector <Number> &dst, Number val) const;
 
@@ -182,11 +198,11 @@ public:
 
   std::size_t memory_consumption() const { return 1; }
 
-
   friend class ReinitHelper<dim,Number>;
 };
 
 
+// Struct to pass the shared memory into a general user function
 template <int dim, typename Number>
 struct SharedData {
   __device__ SharedData(Number *vd,
@@ -197,7 +213,6 @@ struct SharedData {
       gradients[d] = gq[d];
     }
   }
-
 
   Number             *values;
   Number             *gradients[dim];
@@ -211,6 +226,7 @@ __global__ void apply_kernel_shmem (Number                          *dst,
                                     const typename MatrixFreeGpu<dim,Number>::GpuData gpu_data)
 {
 
+  // TODO: make use of dynamically allocated shared memory to avoid this mess.
   __shared__ Number values[MATRIX_FREE_BKSIZE_APPLY*LocOp::n_local_dofs];
   __shared__ Number gradients[dim][MATRIX_FREE_BKSIZE_APPLY*LocOp::n_q_points];
 
@@ -220,16 +236,12 @@ __global__ void apply_kernel_shmem (Number                          *dst,
   Number *gq[dim];
   for(int d = 0; d < dim; ++d) gq[d] = &gradients[d][local_cell*LocOp::n_q_points];
 
-  SharedData<dim,Number> shdata(&values[local_cell*LocOp::n_local_dofs],
-                                gq);
+  SharedData<dim,Number> shdata(&values[local_cell*LocOp::n_local_dofs],gq);
 
   if(cell < gpu_data.n_cells) {
     loc_op.apply(dst,src,&gpu_data,cell,&shdata);
   }
 }
-
-
-
 
 template <int dim, typename Number>
 template <typename LocOp>

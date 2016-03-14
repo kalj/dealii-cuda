@@ -22,9 +22,11 @@
 using namespace dealii;
 
 
-//-------------------------------------------------------------------------
-//  coefficient
-//-------------------------------------------------------------------------
+//=============================================================================
+// coefficient
+//=============================================================================
+
+// For now we need two of these, one for the device and one for the host.
 
 template <int dim, typename Number>
 struct Coefficient
@@ -43,7 +45,6 @@ struct Coefficient
 };
 
 // coefficient for cpu
-
 
 template <int dim>
 class Coeff : public Function<dim>
@@ -98,12 +99,9 @@ void Coeff<dim>::value_list (const std::vector<Point<dim> > &points,
     values[i] = value<double>(points[i],component);
 }
 
-
-//-------------------------------------------------------------------------
+//=============================================================================
 // operator
-//-------------------------------------------------------------------------
-
-
+//=============================================================================
 
 template <int dim, int fe_degree,typename Number>
 class LaplaceOperatorGpu : public Subscriptor
@@ -116,8 +114,8 @@ public:
   void reinit (const DoFHandler<dim>  &dof_handler,
                const ConstraintMatrix  &constraints);
 
-  unsigned int m () const;
-  unsigned int n () const;
+  unsigned int m () const { return data.n_dofs; }
+  unsigned int n () const { return data.n_dofs; }
 
   void vmult (GpuVector<Number> &dst,
               const GpuVector<Number> &src) const;
@@ -128,13 +126,15 @@ public:
   void Tvmult_add (GpuVector<Number> &dst,
                    const GpuVector<Number> &src) const;
 
+  // we cannot access matrix elements of a matrix free operator directly.
   Number el (const unsigned int row,
              const unsigned int col) const {
     Assert (false, ExcNotImplemented());
     return -1000000000000000000;
   }
-  void set_diagonal (const Vector<Number> &diagonal);
 
+  // diagonal for preconditioning
+  void set_diagonal (const Vector<Number> &diagonal);
   const GpuVector<Number>& get_diagonal () const {
     Assert (diagonal_is_available == true, ExcNotInitialized());
     return diagonal_values;
@@ -172,24 +172,6 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::LaplaceOperatorGpu ()
 
 
 template <int dim, int fe_degree, typename Number>
-unsigned int
-LaplaceOperatorGpu<dim,fe_degree,Number>::m () const
-{
-  return data.n_dofs;
-}
-
-
-
-template <int dim, int fe_degree, typename Number>
-unsigned int
-LaplaceOperatorGpu<dim,fe_degree,Number>::n () const
-{
-  return data.n_dofs;
-}
-
-
-
-template <int dim, int fe_degree, typename Number>
 void
 LaplaceOperatorGpu<dim,fe_degree,Number>::clear ()
 {
@@ -220,6 +202,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
 }
 
 
+//  initialize coefficient
 
 template <int dim, int fe_degree, typename Number, typename coefficient_function>
 __global__ void local_coeff_eval (Number                          *coeff,
@@ -264,8 +247,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>:: evaluate_coefficient ()
 }
 
 
-
-
+// multiplication/application functions (symmetric operator -> vmult == Tvmult)
 
 template <int dim, int fe_degree, typename Number>
 void
@@ -297,20 +279,25 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::Tvmult_add (GpuVector<Number>       &d
   vmult_add (dst,src);
 }
 
+// This is the struct we pass to matrix-free for evaluation on each cell
 
 template <int dim, int fe_degree, typename Number>
 struct LocalOperator {
+  // coefficient values at this cell
   const Number *coefficient;
   static const unsigned int n_dofs_1d = fe_degree+1;
   static const unsigned int n_local_dofs = ipow<fe_degree+1,dim>::val;
   static const unsigned int n_q_points = ipow<fe_degree+1,dim>::val;
 
+  // what to do on each quadrature point
   template <typename FEE>
-  __device__ inline void quad_operation(FEE *phi, const unsigned int q,const unsigned int global_q) const
+  __device__ inline void quad_operation(FEE *phi, const unsigned int q,
+                                        const unsigned int global_q) const
   {
     phi->submit_gradient (coefficient[global_q] * phi->get_gradient(q), q);
   }
 
+  // what to do fore each cell
   __device__ void apply (Number                          *dst,
                           const Number                    *src,
                           const typename MatrixFreeGpu<dim,Number>::GpuData *gpu_data,
@@ -349,8 +336,6 @@ void
 LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (GpuVector<Number>       &dst,
                                                      const GpuVector<Number> &src) const
 {
-
-
   std::vector <LocalOperator<dim,fe_degree,Number> > loc_op(data.num_colors);
   for(int c=0; c<data.num_colors; c++) {
     loc_op[c].coefficient = coefficient[c].getDataRO();
@@ -362,18 +347,16 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (GpuVector<Number>       &ds
 
 }
 
+// set diagonal (and set values correponding to constrained DoFs to 1)
 template <int dim, int fe_degree, typename Number>
 void
 LaplaceOperatorGpu<dim,fe_degree,Number>::set_diagonal(const Vector<Number> &diagonal)
 {
   AssertDimension (m(), diagonal.size());
 
-
   diagonal_values = diagonal;
 
-
   data.set_constrained_values(diagonal_values,1.0);
-
 
   diagonal_is_available = true;
 }

@@ -12,6 +12,13 @@
 #include "defs.h"
 #include "utils.h"
 
+
+//=============================================================================
+// This implements tensor contractions in 1, 2, and 3 dimensions. Also included
+// are aggregates for integrating a scalar function or its gradient, or to
+// interpolate values at quadrature points.
+//=============================================================================
+
 template <int dim, int n, typename Number>
 struct TensorOpsShmem {
 

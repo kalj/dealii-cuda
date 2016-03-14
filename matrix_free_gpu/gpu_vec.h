@@ -10,13 +10,12 @@
 #define _GPUVEC_H
 
 #include <deal.II/lac/vector.h>
-// #include <deal.II/base/subscriptor.h>
+#include <deal.II/base/subscriptor.h>
 #include <cstddef>
 using namespace dealii;
 
 template <typename Number>
-class GpuVector {
-  // class GpuVector : public Subscriptor {
+class GpuVector : public Subscriptor {
 private:
   Number *vec_dev;
   int _size;
@@ -25,36 +24,41 @@ public:
   GpuVector()
     : vec_dev(NULL), _size(0) {}
 
+  // initialize with size
   GpuVector(unsigned int s);
 
+  // copy constructor
   GpuVector(const GpuVector<Number>& old);
 
+  // copy constructor from CPU object
   GpuVector(const Vector<Number>& old_cpu);
 
-
+  // same for assignment
   GpuVector<Number>& operator=(const GpuVector<Number>& old);
-
   GpuVector<Number>& operator=(const Vector<Number>& old_cpu);
-
 
   ~GpuVector();
 
   int size() const { return _size;}
 
+  // assigns this object in-place to a CPU object
   void copyToHost(Vector<Number>& dst) const;
 
+  // for assignment
   Vector<Number> toVector() const {
     Vector<Number> v(_size);
     copyToHost(v);
     return v;
   }
+
+  // Access internal data buffer
   Number *getData() { return vec_dev; }
   const Number *getDataRO() const { return vec_dev; }
 
+  // initialize with single value
   GpuVector& operator=(const Number n);
 
-  // necessary for deal.ii
-
+  // necessary for deal.ii but not allowed here!
   Number& operator()(const size_t i) {
     Assert(false,ExcNotImplemented());
   }
@@ -64,9 +68,9 @@ public:
   // clear vector. note
   // that the second argument must have
   // a default value equal to false
-
   void reinit (const GpuVector<Number>&,
                bool leave_elements_uninitialized = false);
+
   // scalar product
   Number operator * (const GpuVector<Number> &v) const;
   // addition of vectors
@@ -108,7 +112,9 @@ public:
 
   void resize(unsigned int);
 
+  // are all entries zero?
   bool all_zero() const;
+
   void print(const char *fmt) const { toVector().print(fmt); }
 
   void swap(GpuVector<Number> &other) {

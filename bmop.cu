@@ -1,6 +1,5 @@
 /* -*- c-basic-offset:2; tab-width:2; indent-tabs-mode:nil -*-
  *
- *
  */
 
 
@@ -186,10 +185,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 template <int dim, int fe_degree>
 void LaplaceProblem<dim,fe_degree>::run ()
 {
-
   GridGenerator::hyper_cube (triangulation, 0., 1.);
-
-
 
   triangulation.refine_global (1);
   {
@@ -215,6 +211,8 @@ void LaplaceProblem<dim,fe_degree>::run ()
   triangulation.execute_coarsening_and_refinement();
   triangulation.refine_global (2);
 
+  // set up roughly similar grids for different fe_degree (and scale up 2D
+  // problem somewhat)
   if(dim == 2) {
     triangulation.refine_global (2);
   }
