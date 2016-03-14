@@ -4,8 +4,8 @@ It includes the general framework in the directory `matrix_free_gpu`, and an app
 
 To build the application (require CUDA 7.5 and a CUDA-capable GPU):
 
-   mkdir build
-   cd build
-   cmake -D CMAKE_CXX_FLAGS="--std=c++11 -march=native -DDEGREE_FE=4 -DDIMENSION=3 -DMATRIX_FREE_UNIFORM_MESH" -DCMAKE_BUILD_TYPE=RELEASE -DDEAL_II_DIR=/path/to/dealii ..
-   make poisson
-   ./poisson
+    mkdir build
+    cd build
+    cmake -D CMAKE_CXX_FLAGS="--std=c++11 -march=native -DDEGREE_FE=4 -DDIMENSION=3 -DMATRIX_FREE_UNIFORM_MESH" -DCMAKE_BUILD_TYPE=RELEASE -DDEAL_II_DIR=/path/to/dealii ..
+    make poisson
+    ./poisson
