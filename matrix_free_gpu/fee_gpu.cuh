@@ -199,7 +199,7 @@ FEEvaluationGpuPIE<Number,dim,fe_degree>::get_gradient(const unsigned int q) con
   const Number* J = &inv_jac[q];
 
   for(int d1=0; d1<dim; d1++) {
-#ifdef MATRIX_FREE_J0
+#ifdef MATRIX_FREE_UNIFORM_MESH
     grad[d1] = J[0]*gradients[d1][q];
 #else
     Number tmp = 0;
@@ -229,7 +229,7 @@ __device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::submit_gradient(const 
   const Number jxw = JxW[q];
 
   for(int d1=0; d1<dim; d1++) {
-#ifdef MATRIX_FREE_J0
+#ifdef MATRIX_FREE_UNIFORM_MESH
     gradients[d1][q] = grad[d1] * J[0] * jxw;
 #else
     Number tmp = 0;
