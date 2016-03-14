@@ -32,6 +32,7 @@ ENDIF()
 SITE_NAME(HOSTNAME)
 
 MESSAGE("-- Setting up for Compute Capability 3.5")
+SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch=sm_35)
 
 SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++11 -lineinfo -Xptxas -v)
 
