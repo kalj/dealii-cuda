@@ -53,11 +53,15 @@ private:
 
   // TODO: fix update flags
   const UpdateFlags &update_flags;
+
+  // For setting up hanging node constraints
+  // HangingNodes<dim> hanging_nodes;
 public:
   ReinitHelper(MatrixFreeGpu<dim,Number>                              *data,
                const FiniteElement<dim>                               &fe,
                const Quadrature<1>                                    &quad,
                const internal::MatrixFreeFunctions::ShapeInfo<Number> &shape_info,
+               const DoFHandler<dim>                                  &dof_handler,
                const UpdateFlags &update_flags)
     : data(data),
       fe_degree(data->fe_degree),
@@ -67,6 +71,7 @@ public:
                  update_inverse_jacobians | update_quadrature_points |
                  update_values | update_gradients | update_JxW_values),
       lexicographic_inv(shape_info.lexicographic_numbering),
+      // hanging_nodes(fe_degree,dof_handler,lexicographic_inv),
       update_flags(update_flags)
   {
     local_dof_indices.resize(data->dofs_per_cell);
@@ -154,10 +159,9 @@ void ReinitHelper<dim,Number>::get_cell_data(const T& cell, const unsigned int c
     lexicographic_dof_indices[i] = local_dof_indices[lexicographic_inv[i]];
 
   // setup hanging nodes
-  // setup_hanging_node_constraints<dim> (constraint_mask_host[cellid],
-  //                                      lexicographic_dof_indices,
-  //                                      fe_degree,
-  //                                      cell,cellid);
+  // hanging_nodes.setup_constraints (constraint_mask_host[cellid],
+  //                                  lexicographic_dof_indices,
+  //                                  cell,cellid);
 
   memcpy(&loc2glob_host[cellid*dofs_per_cell],&lexicographic_dof_indices[0],dofs_per_cell*sizeof(unsigned int));
 
@@ -332,13 +336,11 @@ reinit(const Mapping<dim>        &mapping,
     CUDA_CHECK_SUCCESS(cudaMemcpyToSymbol(shape_gradient, &shape_info.shape_gradient_number[0],size_shape_values));
   }
 
-//  setup_constraint_weights(fe_degree);
-
   //---------------------------------------------------------------------------
   // cell-specific stuff (indices, JxW, inverse jacobian, quadrature points, etc)
   //---------------------------------------------------------------------------
 
-  ReinitHelper<dim,Number> helper(this,fe,quad,shape_info,update_flags);
+  ReinitHelper<dim,Number> helper(this,fe,quad,shape_info,dof_handler,update_flags);
 
   if(use_coloring) {
 

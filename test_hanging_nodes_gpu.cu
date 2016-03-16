@@ -67,14 +67,29 @@ int main(int argc, char *argv[])
   Quadrature<dimension> q(fe.get_unit_support_points());
   FEValues<dimension> fe_values(fe,q,update_q_points);
 
-  enum grid_type { cube, loop, twisted_loop, moebius};
+  enum test_cases { cube_corner, slab_edge, loop, twisted_loop, moebius};
 
-  grid_type gtype = moebius;
+  test_cases test_case = slab_edge;
 
-  switch(gtype) {
-  case cube:
+  //---------------------------------------------------------------------------
+  // Setup basic mesh
+  //---------------------------------------------------------------------------
+
+  switch(test_case) {
+  case cube_corner:
     GridGenerator::hyper_cube (triangulation, 0., 1.);
     triangulation.refine_global (1);
+    break;
+  case slab_edge:
+    {
+      std::vector<unsigned int> reps;
+      reps.push_back(2);
+      reps.push_back(1);
+      reps.push_back(2);
+      GridGenerator::subdivided_hyper_rectangle (triangulation,
+                                                 reps,Point<3>(0.0,0.0,0.0),
+                                                 Point<3>(1.0,0.5,1.0));
+    }
     break;
   case loop:
     {
@@ -275,6 +290,9 @@ int main(int argc, char *argv[])
 
   write_mesh<dimension> (dof_handler,"grid-0.vtu");
 
+  //---------------------------------------------------------------------------
+  // Setup refinement
+  //---------------------------------------------------------------------------
 
   typename DoFHandler<dimension>::active_cell_iterator
     it = dof_handler.begin_active(),
@@ -285,21 +303,25 @@ int main(int argc, char *argv[])
     // std::cout << "cell " << cellid << ": " << p << std::endl;
 
     bool ref=false;
-    if(gtype == moebius) {
+    if(test_case == moebius) {
       ref = p[0] > 1 && p[1] < 0;
     //ref = p[0] > 1 && p[1] > 0;
     }
-    else if(gtype == cube) {
+    else if(test_case == cube_corner) {
 
       ref=true;
       for(int d = 0; d < dimension; ++d) {
-        ref = ref && p[d] > 0;
+        ref = ref && p[d] > 0.5;
       }
     }
-    else if(gtype == loop || gtype == twisted_loop) {
+    else if(test_case == slab_edge) {
+
+      ref=p[0] > 0.5 || p[2] > 0.5;
+
+    }
+    else if(test_case == loop || test_case == twisted_loop) {
       ref = p[0] < 1 && p[1] > 1;
     }
-
 
     if(ref) it->set_refine_flag();
   }
@@ -310,9 +332,11 @@ int main(int argc, char *argv[])
 
   dof_handler.distribute_dofs (fe);
 
-
   write_mesh<dimension> (dof_handler,"grid-1.vtu");
 
+  //---------------------------------------------------------------------------
+  // print properties of mesh
+  //---------------------------------------------------------------------------
 
   it = dof_handler.begin_active();
   end = dof_handler.end();
@@ -353,8 +377,8 @@ int main(int argc, char *argv[])
           Point<dimension> fp = it->face(face)->center();
 
           bool apa = true;
-          if(gtype == moebius) apa = (fp[1]==0 && fp[0] > 0 ) || cellid==0;
-          else if(gtype == loop || twisted_loop) apa = fp[1] == 1;
+          if(test_case == moebius) apa = (fp[1]==0 && fp[0] > 0 ) || cellid==0;
+          else if(test_case == loop || test_case==twisted_loop) apa = fp[1] == 1;
 
           if(apa) {
 
