@@ -68,7 +68,7 @@ private:
 public:
   HangingNodes(unsigned int fe_degree, const DoFHandler<dim> &dof_handler,
                const std::vector<unsigned int> &lex_mapping)
-    : n_raw_lines(dof_handler.get_tria().n_raw_lines()),
+    : n_raw_lines(dof_handler.get_triangulation().n_raw_lines()),
       line_to_cells(dim==3?n_raw_lines:0),
       dof_handler(dof_handler),
       lex_mapping(lex_mapping),

@@ -318,7 +318,7 @@ reinit(const Mapping<dim>        &mapping,
   assert(n_dofs_1d == n_q_points_1d);
 
   n_dofs = dof_handler.n_dofs();
-  n_cells_tot = dof_handler.get_tria().n_active_cells();
+  n_cells_tot = dof_handler.get_triangulation().n_active_cells();
 
   dofs_per_cell = fe.dofs_per_cell;
   qpts_per_cell = ipowf(n_q_points_1d,dim);
