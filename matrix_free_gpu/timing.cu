@@ -5,6 +5,8 @@
  *
  */
 
+#include <stdio.h>
+
 double timer()
 {
   cudaDeviceSynchronize();

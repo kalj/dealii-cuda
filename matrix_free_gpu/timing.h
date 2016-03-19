@@ -9,7 +9,6 @@
 #define _TIMING_H
 
 #include <time.h>
-#include <stdio.h>
 
 double timer();
 
