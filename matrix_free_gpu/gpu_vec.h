@@ -116,7 +116,10 @@ public:
   // are all entries zero?
   bool all_zero() const;
 
-  void print(const char *fmt) const { toVector().print(fmt); }
+  void print(std::ostream &out, const unsigned int precision = 3,
+             const bool scientific = true, const bool across = true) const {
+    toVector().print(out,precision,scientific,across);
+  }
 
   void swap(GpuVector<Number> &other) {
     Number * tmp_vec = vec_dev;

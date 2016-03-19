@@ -215,13 +215,13 @@ void run ()
 
     Vector<double> gvec2_host = gvec2.toVector();
     std::cout << "spmv:" << std::endl;
-    vec2.print("%8.4g");
+    vec2.print(std::cout);
 
     std::cout << "mfree_cpu: " << std::endl;
-    vec3.print("%8.4g");
+    vec3.print(std::cout);
 
     std::cout << "mfree_gpu: " << std::endl;
-    gvec2_host.print("%8.4g");
+    gvec2_host.print(std::cout);
 
 
     system_matrix.clear();
