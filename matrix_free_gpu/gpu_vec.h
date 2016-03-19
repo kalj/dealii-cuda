@@ -16,6 +16,8 @@ using namespace dealii;
 
 template <typename Number>
 class GpuVector : public Subscriptor {
+public:
+  typedef types::global_dof_index size_type;
 private:
   Number *vec_dev;
   int _size;
@@ -130,6 +132,9 @@ public:
     other.vec_dev = tmp_vec;
     other._size = tmp_size;
   }
+
+  IndexSet locally_owned_elements() const { return complete_index_set(size()); }
+  void compress(::VectorOperation::values   operation = ::VectorOperation::unknown) const { }
 };
 
 #endif /* _GPUVEC_H */
