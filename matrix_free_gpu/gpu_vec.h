@@ -60,7 +60,8 @@ public:
 
   // necessary for deal.ii but not allowed here!
   Number& operator()(const size_t i) {
-    Assert(false,ExcNotImplemented());
+    ExcNotImplemented();
+    return vec_dev[0];
   }
 
   // resize to have the same structure

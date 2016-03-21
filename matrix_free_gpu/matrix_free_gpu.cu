@@ -287,7 +287,6 @@ void MatrixFreeGpu<dim,Number>::
 reinit(const Mapping<dim>        &mapping,
        const DoFHandler<dim>     &dof_handler,
        const ConstraintMatrix &constraints,
-       // const IndexSet         &locally_owned_dofs,
        const Quadrature<1>           &quad,
        const AdditionalData    additional_data)
 {

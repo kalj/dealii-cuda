@@ -291,30 +291,37 @@ void LaplaceProblem<dim,fe_degree>::run ()
       GridGenerator::hyper_cube (triangulation, 0., 1.);
 
       triangulation.refine_global (1);
+#ifdef USE_HANGING_NODES
       {
         typename Triangulation<dim>::active_cell_iterator
           it = triangulation.begin_active(),
           end = triangulation.end();
         for(; it != end; ++it) {
-          Point<dim> p = it->center();
+          const Point<dim> p = it->center();
 
-#ifdef USE_HANGING_NODES
-          bool ref = true;
-          for(int d = 0; d < dim; ++d)
-            ref = (p[d] > 0.5) && ref;
-          if(ref) it->set_refine_flag();
-#else
-           it->set_refine_flag();
-#endif
+          // for refinement of the top, left, back octant only
+          if((p[0] > 0.5) &&
+             (p[1] > 0.5) &&
+             (p[2] > 0.5)) it->set_refine_flag();
+
+          // refinement of anything but the lower left two octants. this allows
+          // for edge-only constraints of the elements positioned diagonally to
+          // the unrefined octants.
+
+          // if((p[0] > 0.5) || (p[2] > 0.5)) it->set_refine_flag();
 
         }
         triangulation.execute_coarsening_and_refinement();
       }
+#else
+      triangulation.refine_global (1);
+#endif
 
     }
     else {
       triangulation.refine_global (1);
     }
+
     setup_system ();
     assemble_system ();
     solve ();

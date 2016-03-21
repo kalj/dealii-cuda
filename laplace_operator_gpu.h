@@ -129,7 +129,7 @@ public:
   // we cannot access matrix elements of a matrix free operator directly.
   Number el (const unsigned int row,
              const unsigned int col) const {
-    Assert (false, ExcNotImplemented());
+    ExcNotImplemented();
     return -1000000000000000000;
   }
 
