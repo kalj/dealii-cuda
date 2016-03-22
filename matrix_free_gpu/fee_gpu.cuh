@@ -77,10 +77,11 @@ public:
 //=============================================================================
 
 // This implementation uses one thread per DoF in an element, and implements
-// this using Shared Memory. (PIE == Parallel In Element)
+// this using Shared Memory. (PIE == Parallel In Element), or actually, no
+// suffix
 
 template <typename Number, int dim, int fe_degree>
-class FEEvaluationGpuPIE : public FEEvaluationGpuBase<Number,dim,fe_degree>
+class FEEvaluationGpu : public FEEvaluationGpuBase<Number,dim,fe_degree>
 {
 public:
   typedef Number number_type;
@@ -113,7 +114,7 @@ public:
 
   // Constructor. Requires the cell id, the pointer to the data cache, and the
   // pointer to the element local shared scratch data.
-  __device__ FEEvaluationGpuPIE(int cellid, const data_type *data, SharedData<dim,Number> *shdata);
+  __device__ FEEvaluationGpu(int cellid, const data_type *data, SharedData<dim,Number> *shdata);
 
   // read local values from the device-side array
   __device__ void read_dof_values(const Number *src);
@@ -151,9 +152,9 @@ public:
 };
 
 template <typename Number, int dim, int fe_degree>
-__device__ FEEvaluationGpuPIE<Number,dim,fe_degree>::FEEvaluationGpuPIE(int cellid,
-                                                                        const data_type *data,
-                                                                        SharedData<dim,Number> *shdata)
+__device__ FEEvaluationGpu<Number,dim,fe_degree>::FEEvaluationGpu(int cellid,
+                                                                  const data_type *data,
+                                                                  SharedData<dim,Number> *shdata)
   :
   FEEvaluationGpuBase<Number,dim,fe_degree>(cellid,data)
 {
@@ -170,8 +171,8 @@ __device__ FEEvaluationGpuPIE<Number,dim,fe_degree>::FEEvaluationGpuPIE(int cell
 
 
 template <typename Number, int dim, int fe_degree>
-__device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::evaluate(const bool evaluate_val,
-                                                                   const bool evaluate_grad)
+__device__ void FEEvaluationGpu<Number,dim,fe_degree>::evaluate(const bool evaluate_val,
+                                                                const bool evaluate_grad)
 {
   if(evaluate_grad)
     TensorOpsShmem<dim,fe_degree+1,Number>::grad_at_quad_pts (gradients,values);
@@ -185,14 +186,14 @@ __device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::evaluate(const bool ev
 
 template <typename Number, int dim, int fe_degree>
 __device__ Number
-FEEvaluationGpuPIE<Number,dim,fe_degree>::get_value(const unsigned int q) const
+FEEvaluationGpu<Number,dim,fe_degree>::get_value(const unsigned int q) const
 {
   return values[q];
 }
 
 template <typename Number, int dim, int fe_degree>
-__device__ FEEvaluationGpuPIE<Number,dim,fe_degree>::gradient_type
-FEEvaluationGpuPIE<Number,dim,fe_degree>::get_gradient(const unsigned int q) const
+__device__ FEEvaluationGpu<Number,dim,fe_degree>::gradient_type
+FEEvaluationGpu<Number,dim,fe_degree>::get_gradient(const unsigned int q) const
 {
   // compute J^{-1} * gradients_quad[q]
   gradient_type grad;
@@ -214,15 +215,16 @@ FEEvaluationGpuPIE<Number,dim,fe_degree>::get_gradient(const unsigned int q) con
   return grad;
 }
 
+
 template <typename Number, int dim, int fe_degree>
-__device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::submit_value(const Number &val, const unsigned int q)
+__device__ void FEEvaluationGpu<Number,dim,fe_degree>::submit_value(const Number &val, const unsigned int q)
 {
   const Number jxw = JxW[q];
   values[q] = jxw*val;
 }
 
 template <typename Number, int dim, int fe_degree>
-__device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::submit_gradient(const gradient_type &grad, const unsigned int q)
+__device__ void FEEvaluationGpu<Number,dim,fe_degree>::submit_gradient(const gradient_type &grad, const unsigned int q)
 {
   // compute J^{-T} * grad * det(J) *w_q
   const Number *J = &inv_jac[q];
@@ -243,8 +245,8 @@ __device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::submit_gradient(const 
 }
 
 template <typename Number, int dim, int fe_degree>
-__device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::integrate(const bool integrate_val,
-                                                                                  const bool integrate_grad)
+__device__ void FEEvaluationGpu<Number,dim,fe_degree>::integrate(const bool integrate_val,
+                                                                 const bool integrate_grad)
 {
   // TODO: merge these when both are called
 
@@ -265,7 +267,7 @@ __device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::integrate(const bool i
 //=============================================================================
 
 template <typename Number, int dim, int fe_degree>
-__device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::read_dof_values(const Number *src)
+__device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Number *src)
 {
   const unsigned int  idx = (threadIdx.x%n_q_points_1d)
     +(dim>1 ? threadIdx.y : 0)*n_q_points_1d
@@ -285,7 +287,7 @@ __device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::read_dof_values(const 
 //=============================================================================
 
 template <typename Number, int dim, int fe_degree>
-__device__ void FEEvaluationGpuPIE<Number,dim,fe_degree>::distribute_local_to_global(Number *dst)
+__device__ void FEEvaluationGpu<Number,dim,fe_degree>::distribute_local_to_global(Number *dst)
 {
   // if(constraint_mask)
   //   resolve_hanging_nodes_shmem<dim,fe_degree,TRANSPOSE>(values,constraint_mask);
