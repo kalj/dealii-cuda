@@ -53,3 +53,6 @@ TARGET_LINK_LIBRARIES(test_hanging_nodes_gpu ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_hanging_node_interpolation test_hanging_node_interpolation.cu)
 TARGET_LINK_LIBRARIES(test_hanging_node_interpolation ${LIBRARIES})
+
+CUDA_ADD_EXECUTABLE(bm_dot bm_dot.cpp matrix_free_gpu/gpu_vec.cu matrix_free_gpu/timing.cu)
+TARGET_LINK_LIBRARIES(bm_dot ${LIBRARIES})
