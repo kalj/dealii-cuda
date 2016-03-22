@@ -36,12 +36,27 @@
 //=============================================================================
 
 
-
-#define MATRIX_FREE_BKSIZE_APPLY_DEF 1
-
-#ifndef MATRIX_FREE_BKSIZE_APPLY
-#define MATRIX_FREE_BKSIZE_APPLY (MATRIX_FREE_BKSIZE_APPLY_DEF)
+// this function determines the number of cells per block, possibly at compile
+// time
+__host__ __device__ constexpr unsigned int cells_per_block_shmem(int dim,
+                                                                 int fe_degree)
+{
+#ifdef MATRIX_FREE_CELLS_PER_BLOCK
+  return MATRIX_FREE_CELLS_PER_BLOCK;
+#else
+  return dim==2 ? (fe_degree==1 ? 32
+                   : fe_degree==2 ? 8
+                   : fe_degree==3 ? 4
+                   : fe_degree==4 ? 4
+                   : 0) :
+    dim==3 ? (fe_degree==1 ? 8
+              : fe_degree==2 ? 2
+              : fe_degree==3 ? 1
+              : fe_degree==4 ? 1
+              : 0) : 0;
 #endif
+}
+
 
 
 using namespace dealii;
@@ -119,6 +134,8 @@ private:
   std::vector<dim3> grid_dim;
   std::vector<dim3> block_dim;
 
+  // related to parallelization
+  unsigned int cells_per_block;
   dim3 constr_grid_dim;
   dim3 constr_block_dim;
 public:
@@ -219,13 +236,14 @@ __global__ void apply_kernel_shmem (Number                          *dst,
                                     const LocOp                    loc_op,
                                     const typename MatrixFreeGpu<dim,Number>::GpuData gpu_data)
 {
+  const unsigned int cells_per_block = cells_per_block_shmem(dim,LocOp::n_dofs_1d-1);
 
   // TODO: make use of dynamically allocated shared memory to avoid this mess.
-  __shared__ Number values[MATRIX_FREE_BKSIZE_APPLY*LocOp::n_local_dofs];
-  __shared__ Number gradients[dim][MATRIX_FREE_BKSIZE_APPLY*LocOp::n_q_points];
+  __shared__ Number values[cells_per_block*LocOp::n_local_dofs];
+  __shared__ Number gradients[dim][cells_per_block*LocOp::n_q_points];
 
   const unsigned int local_cell = (threadIdx.x/LocOp::n_dofs_1d);
-  const unsigned int cell = local_cell + MATRIX_FREE_BKSIZE_APPLY*(blockIdx.x+gridDim.x*blockIdx.y);
+  const unsigned int cell = local_cell + cells_per_block*(blockIdx.x+gridDim.x*blockIdx.y);
 
   Number *gq[dim];
   for(int d = 0; d < dim; ++d) gq[d] = &gradients[d][local_cell*LocOp::n_q_points];

@@ -109,9 +109,11 @@ void ReinitHelper<dim,Number>::setup_color_arrays(const unsigned int num_colors)
 template <int dim, typename Number>
 void ReinitHelper<dim,Number>::setup_cell_arrays(const unsigned int c)
 {
-  const unsigned n_cells = data->n_cells[c];
+  const unsigned int n_cells = data->n_cells[c];
+  const unsigned int cells_per_block = data->cells_per_block;
+
   // setup kernel parameters
-  const unsigned int apply_num_blocks = ceil(n_cells / float(MATRIX_FREE_BKSIZE_APPLY));
+  const unsigned int apply_num_blocks = ceil(n_cells / float(cells_per_block));
   const unsigned int apply_x_num_blocks = round(sqrt(apply_num_blocks)); // get closest to even square.
   const unsigned int apply_y_num_blocks = ceil(double(apply_num_blocks)/apply_x_num_blocks);
 
@@ -122,15 +124,14 @@ void ReinitHelper<dim,Number>::setup_cell_arrays(const unsigned int c)
   if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_in_elem) {
 
     if(dim==1)
-      data->block_dim[c] = dim3(n_dofs_1d*MATRIX_FREE_BKSIZE_APPLY);
+      data->block_dim[c] = dim3(n_dofs_1d*cells_per_block);
     else if(dim==2)
-      data->block_dim[c] = dim3(n_dofs_1d*MATRIX_FREE_BKSIZE_APPLY,n_dofs_1d);
+      data->block_dim[c] = dim3(n_dofs_1d*cells_per_block,n_dofs_1d);
     else if(dim==3)
-      data->block_dim[c] = dim3(n_dofs_1d*MATRIX_FREE_BKSIZE_APPLY,n_dofs_1d,n_dofs_1d);
+      data->block_dim[c] = dim3(n_dofs_1d*cells_per_block,n_dofs_1d,n_dofs_1d);
   }
   else {
-
-    data->block_dim[c] = dim3(MATRIX_FREE_BKSIZE_APPLY);
+    data->block_dim[c] = dim3(cells_per_block);
   }
 
 
@@ -334,6 +335,9 @@ reinit(const Mapping<dim>        &mapping,
   if(update_flags & update_gradients) {
     CUDA_CHECK_SUCCESS(cudaMemcpyToSymbol(shape_gradient, &shape_info.shape_gradient_number[0],size_shape_values));
   }
+
+  // Setup number of cells per CUDA thread block
+  cells_per_block = cells_per_block_shmem(dim,fe_degree);
 
   //---------------------------------------------------------------------------
   // cell-specific stuff (indices, JxW, inverse jacobian, quadrature points, etc)
