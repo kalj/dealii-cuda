@@ -16,7 +16,9 @@ template class VectorMemory<GpuVector<double> >;
 template class GrowingVectorMemory<GpuVector<double> >;
 
 
+//=============================================================================
 // Constructors / assignment
+//=============================================================================
 
 template <typename Number>
 GpuVector<Number>::GpuVector(unsigned int s)
@@ -82,7 +84,6 @@ void GpuVector<Number>::copyToHost(Vector<Number>& dst) const {
                                 cudaMemcpyDeviceToHost));
 }
 
-
 // resize to have the same structure as the one provided and/or clear
 // vector. note that the second argument must have a default value equal to
 // false
@@ -116,169 +117,6 @@ void GpuVector<Number>::resize (unsigned int n)
     CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,_size*sizeof(Number)));
 
   }
-}
-
-
-//=============================================================================
-// Reduction operations
-//=============================================================================
-
-#define DOT_BKSIZE 512
-#define DOT_CHUNK_SIZE 8
-
-template <typename Number>
-__device__ void dotWithinWarp(volatile Number *res_buf, int local_idx) {
-  if(DOT_BKSIZE >= 64) res_buf[local_idx] += res_buf[local_idx+32];
-  if(DOT_BKSIZE >= 32) res_buf[local_idx] += res_buf[local_idx+16];
-  if(DOT_BKSIZE >= 16) res_buf[local_idx] += res_buf[local_idx+8];
-  if(DOT_BKSIZE >= 8)  res_buf[local_idx] += res_buf[local_idx+4];
-  if(DOT_BKSIZE >= 4)  res_buf[local_idx] += res_buf[local_idx+2];
-  if(DOT_BKSIZE >= 2)  res_buf[local_idx] += res_buf[local_idx+1];
-}
-
-template <typename Number>
-__global__ void dot_prod(Number *res, const Number *v1, const Number *v2, const int N)
-{
-  __shared__ Number res_buf[DOT_BKSIZE];
-
-  const int global_idx = threadIdx.x + blockIdx.x*(blockDim.x*DOT_CHUNK_SIZE);
-  const int local_idx = threadIdx.x;
-  if(global_idx < N)
-    res_buf[local_idx] = v1[global_idx]*v2[global_idx];
-  else
-    res_buf[local_idx] = 0;
-
-  for(int c = 1; c < DOT_CHUNK_SIZE; ++c) {
-    const int idx=global_idx+c*DOT_BKSIZE;
-    if(idx < N)
-      res_buf[local_idx] += v1[idx]*v2[idx];
-  }
-
-  __syncthreads();
-
-  for(int s = DOT_BKSIZE/2; s>32; s=s>>1) {
-
-    if(local_idx < s)
-      res_buf[local_idx] += res_buf[local_idx+s];
-    __syncthreads();
-  }
-
-  if(local_idx < 32) {
-    dotWithinWarp(res_buf,local_idx);
-  }
-
-  if(local_idx == 0)
-    atomicAdd(res,res_buf[0]);
-}
-
-// scalar product
-template <typename Number>
-Number GpuVector<Number>::operator * (const GpuVector<Number> &v) const {
-  Number *res_d;
-  CUDA_CHECK_SUCCESS(cudaMalloc(&res_d,sizeof(Number)));
-  CUDA_CHECK_SUCCESS(cudaMemset(res_d, 0, sizeof(Number)));
-
-  const int nblocks = 1 + (_size-1) / (DOT_CHUNK_SIZE*DOT_BKSIZE);
-  dot_prod<Number> <<<dim3(nblocks,1),dim3(DOT_BKSIZE,1)>>>(res_d,vec_dev,v.vec_dev,_size);
-
-  Number res;
-  CUDA_CHECK_SUCCESS(cudaMemcpy(&res,res_d,sizeof(Number),
-                                cudaMemcpyDeviceToHost));
-
-  CUDA_CHECK_SUCCESS(cudaFree(res_d));
-  return res;
-}
-
-
-// single vector reduction, e.g. all_zero, max, min, etc
-
-#define SVR_BKSIZE 512
-#define SVR_CHUNK_SIZE 8
-
-
-template <typename Number>
-struct AllZero {
-  typedef bool shmem_type;
-  typedef unsigned int result_type;
-  __device__ static bool elemwise_op(const Number v) {return v == 0;}
-  __device__ static bool red_op(const bool a, const bool b){return a && b;}
-  __device__ static unsigned int atomic_op(unsigned *dst, const bool a){return atomicAnd(dst,(unsigned int)a);}
-  __device__ static bool ident_value() { return true; }
-
-};
-
-template <typename Number>
-struct MaxOperation {
-  typedef Number shmem_type;
-  typedef Number result_type;
-  __device__ static Number elemwise_op(const Number v) {return v == 0;}
-  __device__ static Number red_op(const Number a, const Number b){return a>b?a:b;}
-  __device__ static Number atomic_op(Number *dst, const Number a){return atomicMax(dst,a);}
-  __device__ static Number ident_value() { return -DBL_MAX; }
-};
-
-
-template <typename Operation, typename Number>
-__device__ void reduceWithinWarp(volatile typename Operation::shmem_type *res_buf, int local_idx) {
-  if(DOT_BKSIZE >= 64) res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+32]);
-  if(DOT_BKSIZE >= 32) res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+16]);
-  if(DOT_BKSIZE >= 16) res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+8]);
-  if(DOT_BKSIZE >= 8)  res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+4]);
-  if(DOT_BKSIZE >= 4)  res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+2]);
-  if(DOT_BKSIZE >= 2)  res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+1]);
-}
-
-template <typename Operation, typename Number>
-__global__ void single_vec_reduction(typename Operation::result_type *res, const Number *v, const int N)
-{
-  __shared__ typename Operation::shmem_type res_buf[SVR_BKSIZE];
-
-  const int global_idx = threadIdx.x + blockIdx.x*(blockDim.x*SVR_CHUNK_SIZE);
-  const int local_idx = threadIdx.x;
-  if(global_idx < N)
-    res_buf[local_idx] = Operation::elemwise_op(v[global_idx]);
-  else
-    res_buf[local_idx] = Operation::ident_value();
-
-  for(int c = 1; c < SVR_CHUNK_SIZE; ++c) {
-    const int idx=global_idx+c*SVR_BKSIZE;
-    if(idx < N)
-      res_buf[local_idx] = Operation::red_op(res_buf[local_idx],Operation::elemwise_op(v[idx]));
-  }
-
-  __syncthreads();
-
-  for(int s = DOT_BKSIZE/2; s>32; s=s>>1) {
-    if(local_idx < s)
-      res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+s]);
-    __syncthreads();
-  }
-
-  if(local_idx < 32) {
-    reduceWithinWarp<Operation,Number>(res_buf,local_idx);
-  }
-
-  if(local_idx == 0)
-    Operation::atomic_op(res,res_buf[0]);
-}
-
-// all_zero
-
-template <typename Number>
-bool GpuVector<Number>::all_zero () const {
-  unsigned int *res_d;
-  CUDA_CHECK_SUCCESS(cudaMalloc(&res_d,sizeof(unsigned int)));
-  CUDA_CHECK_SUCCESS(cudaMemset(res_d, 1, sizeof(unsigned int )));
-
-  const int nblocks = 1 + (_size-1) / (SVR_CHUNK_SIZE*SVR_BKSIZE);
-  single_vec_reduction<AllZero<Number> > <<<dim3(nblocks,1),dim3(SVR_BKSIZE,1)>>>(res_d,vec_dev,_size);
-
-  unsigned int res;
-  CUDA_CHECK_SUCCESS(cudaMemcpy(&res,res_d,sizeof(unsigned int),
-                                cudaMemcpyDeviceToHost));
-
-  CUDA_CHECK_SUCCESS(cudaFree(res_d));
-  return !(res==0);
 }
 
 
@@ -373,72 +211,6 @@ void GpuVector<Number>::sadd (const Number a,
   vec_sadd<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,x.vec_dev,a,b,_size);
 }
 
-template <typename Number>
-__global__ void add_and_dot_kernel(Number *res, Number *v1, const Number *v2,
-                                   const Number *v3, const Number a, const int N)
-{
-  __shared__ Number res_buf[DOT_BKSIZE];
-
-  const int global_idx = threadIdx.x + blockIdx.x*(blockDim.x*DOT_CHUNK_SIZE);
-  const int local_idx = threadIdx.x;
-  if(global_idx < N) {
-
-    v1[global_idx]+= a*v2[global_idx];
-    res_buf[local_idx] = (v1[global_idx])*v3[global_idx];
-  }
-  else
-    res_buf[local_idx] = 0;
-
-  for(int c = 1; c < DOT_CHUNK_SIZE; ++c) {
-    const int idx=global_idx+c*DOT_BKSIZE;
-    if(idx < N) {
-      v1[idx] += a*v2[idx];
-      res_buf[local_idx] += (v1[idx])*v3[idx];
-    }
-  }
-
-  __syncthreads();
-
-  for(int s = DOT_BKSIZE/2; s>32; s=s>>1) {
-
-    if(local_idx < s)
-      res_buf[local_idx] += res_buf[local_idx+s];
-    __syncthreads();
-  }
-
-  if(local_idx < 32) {
-    dotWithinWarp(res_buf,local_idx);
-  }
-
-  if(local_idx == 0)
-    atomicAdd(res,res_buf[0]);
-}
-
-// Combined scaled addition of vector x into
-// the current object and subsequent inner
-// product of the current object with v
-//
-// (this + a*x).dot(v)
-template <typename Number>
-Number GpuVector<Number>::add_and_dot (const Number  a,
-                                       const GpuVector<Number> &x,
-                                       const GpuVector<Number> &v) {
-
-  Number *res_d;
-  CUDA_CHECK_SUCCESS(cudaMalloc(&res_d,sizeof(Number)));
-  CUDA_CHECK_SUCCESS(cudaMemset(res_d, 0, sizeof(Number)));
-
-  const int nblocks = 1 + (_size-1) / (DOT_CHUNK_SIZE*DOT_BKSIZE);
-  add_and_dot_kernel<Number> <<<dim3(nblocks,1),dim3(DOT_BKSIZE,1)>>>(res_d,vec_dev,x.vec_dev,v.vec_dev,a,_size);
-
-  Number res;
-  CUDA_CHECK_SUCCESS(cudaMemcpy(&res,res_d,sizeof(Number),
-                                cudaMemcpyDeviceToHost));
-
-  CUDA_CHECK_SUCCESS(cudaFree(res_d));
-
-  return res;
-}
 
 
 // element-wise multiplication of vectors
@@ -492,6 +264,239 @@ GpuVector<Number>& GpuVector<Number>::operator=(const Number a) {
   vec_init<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,a,_size);
 
   return *this;
+}
+
+//=============================================================================
+// Reduction operations
+//=============================================================================
+
+/*
+ These are implemented using a combination of some general utilities plus a
+ struct containing the specific operations of the reduction you want to
+ implement. For instance, if we want to implement a max operation, the following
+ struct should be used:
+
+ template <typename Number>
+ struct MaxOperation {
+   typedef Number shmem_type;
+   typedef Number result_type;
+   __device__ static Number elemwise_op(const Number v) {return v == 0;}
+   __device__ static Number red_op(const Number a, const Number b){return a>b?a:b;}
+   __device__ static Number atomic_op(Number *dst, const Number a){return atomicMax(dst,a);}
+   __device__ static Number ident_value() { return -DBL_MAX; }
+ };
+
+ Then, this is fed to the single_vec_reduction kernel. It works similarly for
+ dual vector reductions.
+*/
+
+
+// reduction helper functions
+
+#define VR_BKSIZE 512
+#define VR_CHUNK_SIZE 8
+
+template <typename Operation, typename Number>
+__device__ void reduceWithinWarp(volatile typename Operation::shmem_type *res_buf, int local_idx) {
+  if(VR_BKSIZE >= 64) res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+32]);
+  if(VR_BKSIZE >= 32) res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+16]);
+  if(VR_BKSIZE >= 16) res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+8]);
+  if(VR_BKSIZE >= 8)  res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+4]);
+  if(VR_BKSIZE >= 4)  res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+2]);
+  if(VR_BKSIZE >= 2)  res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+1]);
+}
+
+template <typename Operation, typename Number>
+__device__ void reduce(typename Operation::result_type *res, typename Operation::shmem_type *res_buf,
+                      const unsigned int local_idx, const unsigned int global_idx, const unsigned int N)
+{
+  for(int s = VR_BKSIZE/2; s>32; s=s>>1) {
+
+    if(local_idx < s)
+      res_buf[local_idx] = Operation::red_op(res_buf[local_idx],res_buf[local_idx+s]);
+    __syncthreads();
+  }
+
+  if(local_idx < 32) {
+    reduceWithinWarp<Operation,Number>(res_buf,local_idx);
+  }
+
+  if(local_idx == 0)
+    Operation::atomic_op(res,res_buf[0]);
+}
+
+// single vector reductions, e.g. all_zero, max, min, sum, prod, etc
+
+template <typename Operation, typename Number>
+__global__ void single_vec_reduction(typename Operation::result_type *res, const Number *v, const int N)
+{
+  __shared__ typename Operation::shmem_type res_buf[VR_BKSIZE];
+
+  const int global_idx = threadIdx.x + blockIdx.x*(blockDim.x*VR_CHUNK_SIZE);
+  const int local_idx = threadIdx.x;
+
+
+  if(global_idx < N)
+    res_buf[local_idx] = Operation::elemwise_op(v[global_idx]);
+  else
+    res_buf[local_idx] = Operation::ident_value();
+
+  for(int c = 1; c < VR_CHUNK_SIZE; ++c) {
+    const int idx=global_idx+c*VR_BKSIZE;
+    if(idx < N)
+      res_buf[local_idx] = Operation::red_op(res_buf[local_idx],
+                                             Operation::elemwise_op(v[idx]));
+  }
+
+  __syncthreads();
+
+  reduce<Operation,Number> (res,res_buf,local_idx,global_idx,N);
+}
+
+// single vector reductions, e.g. dot product
+
+template <typename Operation, typename Number>
+__global__ void dual_vec_reduction(typename Operation::result_type *res, const Number *v1,
+                                   const Number *v2, const int N)
+{
+  __shared__ typename Operation::shmem_type res_buf[VR_BKSIZE];
+
+  const int global_idx = threadIdx.x + blockIdx.x*(blockDim.x*VR_CHUNK_SIZE);
+  const int local_idx = threadIdx.x;
+
+  if(global_idx < N)
+    res_buf[local_idx] = Operation::binary_op(v1[global_idx],v2[global_idx]);
+  else
+    res_buf[local_idx] = Operation::ident_value();
+
+  for(int c = 1; c < VR_CHUNK_SIZE; ++c) {
+    const int idx=global_idx+c*VR_BKSIZE;
+    if(idx < N)
+      res_buf[local_idx] = Operation::red_op(res_buf[local_idx],
+                                             Operation::binary_op(v1[idx],v2[idx]));
+  }
+
+  __syncthreads();
+
+  reduce<Operation,Number> (res,res_buf,local_idx,global_idx,N);
+}
+
+// all_zero
+
+template <typename Number>
+struct AllZero {
+  typedef bool shmem_type;
+  typedef unsigned int result_type;
+  __device__ static bool elemwise_op(const Number v) {return v == 0;}
+  __device__ static bool red_op(const bool a, const bool b){return a && b;}
+  __device__ static unsigned int atomic_op(unsigned *dst, const bool a){return atomicAnd(dst,(unsigned int)a);}
+  __device__ static bool ident_value() { return true; }
+
+};
+
+template <typename Number>
+bool GpuVector<Number>::all_zero () const {
+  unsigned int *res_d;
+  CUDA_CHECK_SUCCESS(cudaMalloc(&res_d,sizeof(unsigned int)));
+  CUDA_CHECK_SUCCESS(cudaMemset(res_d, 1, sizeof(unsigned int )));
+
+  const int nblocks = 1 + (_size-1) / (VR_CHUNK_SIZE*VR_BKSIZE);
+  single_vec_reduction<AllZero<Number>> <<<dim3(nblocks,1),dim3(VR_BKSIZE,1)>>>(res_d,vec_dev,_size);
+
+  unsigned int res;
+  CUDA_CHECK_SUCCESS(cudaMemcpy(&res,res_d,sizeof(unsigned int),
+                                cudaMemcpyDeviceToHost));
+
+  CUDA_CHECK_SUCCESS(cudaFree(res_d));
+  return !(res==0);
+}
+
+// scalar product
+
+template <typename Number>
+struct DotProd {
+  typedef Number shmem_type;
+  typedef Number result_type;
+  __device__ static Number binary_op(const Number v1,const Number v2) {return v1*v2;}
+  __device__ static Number red_op(const Number a, const Number b){return a+b;}
+  __device__ static Number atomic_op(Number *dst, const Number a){return atomicAdd(dst,(Number)a);}
+  __device__ static Number ident_value() { return 0; }
+};
+
+template <typename Number>
+Number GpuVector<Number>::operator * (const GpuVector<Number> &v) const {
+  Number *res_d;
+  CUDA_CHECK_SUCCESS(cudaMalloc(&res_d,sizeof(Number)));
+  CUDA_CHECK_SUCCESS(cudaMemset(res_d, 0, sizeof(Number)));
+
+  const int nblocks = 1 + (_size-1) / (VR_CHUNK_SIZE*VR_BKSIZE);
+
+  dual_vec_reduction<DotProd<Number> > <<<dim3(nblocks,1),dim3(VR_BKSIZE,1)>>>(res_d,vec_dev,
+                                                                               v.vec_dev,_size);
+  Number res;
+  CUDA_CHECK_SUCCESS(cudaMemcpy(&res,res_d,sizeof(Number),
+                                cudaMemcpyDeviceToHost));
+
+  CUDA_CHECK_SUCCESS(cudaFree(res_d));
+  return res;
+}
+
+
+// Combined scaled addition of vector x into
+// the current object and subsequent inner
+// product of the current object with v
+//
+// (this + a*x).dot(v)
+
+template <typename Number>
+__global__ void add_and_dot_kernel(Number *res, Number *v1, const Number *v2,
+                                   const Number *v3, const Number a, const int N)
+{
+  __shared__ Number res_buf[VR_BKSIZE];
+
+  const int global_idx = threadIdx.x + blockIdx.x*(blockDim.x*VR_CHUNK_SIZE);
+  const int local_idx = threadIdx.x;
+  if(global_idx < N) {
+
+    v1[global_idx]+= a*v2[global_idx];
+    res_buf[local_idx] = (v1[global_idx])*v3[global_idx];
+  }
+  else
+    res_buf[local_idx] = 0;
+
+  for(int c = 1; c < VR_CHUNK_SIZE; ++c) {
+    const int idx=global_idx+c*VR_BKSIZE;
+    if(idx < N) {
+      v1[idx] += a*v2[idx];
+      res_buf[local_idx] += (v1[idx])*v3[idx];
+    }
+  }
+
+  __syncthreads();
+
+  reduce<DotProd<Number>,Number> (res,res_buf,local_idx,global_idx,N);
+}
+
+template <typename Number>
+Number GpuVector<Number>::add_and_dot (const Number  a,
+                                       const GpuVector<Number> &x,
+                                       const GpuVector<Number> &v) {
+
+  Number *res_d;
+  CUDA_CHECK_SUCCESS(cudaMalloc(&res_d,sizeof(Number)));
+  CUDA_CHECK_SUCCESS(cudaMemset(res_d, 0, sizeof(Number)));
+
+  const int nblocks = 1 + (_size-1) / (VR_CHUNK_SIZE*VR_BKSIZE);
+  add_and_dot_kernel<Number> <<<dim3(nblocks,1),dim3(VR_BKSIZE,1)>>>(res_d,vec_dev,x.vec_dev,
+                                                                     v.vec_dev,a,_size);
+
+  Number res;
+  CUDA_CHECK_SUCCESS(cudaMemcpy(&res,res_d,sizeof(Number),
+                                cudaMemcpyDeviceToHost));
+
+  CUDA_CHECK_SUCCESS(cudaFree(res_d));
+
+  return res;
 }
 
 
