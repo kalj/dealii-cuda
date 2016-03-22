@@ -695,7 +695,7 @@ __device__ inline void interpolate_boundary_3d(Number *values, const unsigned in
     const unsigned int face1_idx  = (direction==0) ? yidx : (direction==1) ? zidx : xidx;
     const unsigned int face2_idx  = (direction==0) ? zidx : (direction==1) ? xidx : yidx;
 
-    syncthreads();
+    __syncthreads();
 
     Number t = 0;
 
@@ -737,7 +737,7 @@ __device__ inline void interpolate_boundary_3d(Number *values, const unsigned in
       }
     }
 
-    syncthreads();
+    __syncthreads();
 
     if(flag)
       values[index3<fe_degree+1>(xidx,yidx,zidx)] = t;
@@ -759,7 +759,7 @@ __device__ inline void interpolate_boundary_2d(Number *values, const unsigned in
 
     const unsigned int interp_idx = (direction==0) ? xidx : yidx;
 
-    syncthreads();
+    __syncthreads();
 
     Number t = 0;
     const bool flag =
@@ -793,7 +793,7 @@ __device__ inline void interpolate_boundary_2d(Number *values, const unsigned in
         }
     }
 
-    syncthreads();
+    __syncthreads();
 
     if(flag) values[index2<fe_degree+1>(xidx,yidx)] = t;
   }
