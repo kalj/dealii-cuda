@@ -21,6 +21,13 @@ template class GrowingVectorMemory<GpuVector<double> >;
 //=============================================================================
 
 template <typename Number>
+GpuVector<Number>::DevRef& GpuVector<Number>::DevRef::operator=(const Number value)
+{
+  CUDA_CHECK_SUCCESS(cudaMemcpy(ptr,&value,sizeof(Number),
+                                cudaMemcpyHostToDevice));
+}
+
+template <typename Number>
 GpuVector<Number>::GpuVector(unsigned int s)
 : _size(s) {
   CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,s*sizeof(Number)));

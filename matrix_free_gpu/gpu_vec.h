@@ -14,10 +14,21 @@
 #include <cstddef>
 using namespace dealii;
 
+
+
 template <typename Number>
 class GpuVector : public Subscriptor {
 public:
   typedef types::global_dof_index size_type;
+
+  class DevRef {
+  private:
+    Number *ptr;
+  public:
+    DevRef(Number *p)
+      :ptr(p) {}
+    DevRef& operator=(const Number value);
+  };
 private:
   Number *vec_dev;
   int _size;
@@ -60,10 +71,9 @@ public:
   // initialize with single value
   GpuVector& operator=(const Number n);
 
-  // necessary for deal.ii but not allowed here!
-  Number& operator()(const size_t i) {
-    ExcNotImplemented();
-    return vec_dev[0];
+  // necessary for deal.ii but shouldn't be used!
+  DevRef operator()(const size_t i) {
+    return DevRef(vec_dev+i);
   }
 
   // resize to have the same structure
