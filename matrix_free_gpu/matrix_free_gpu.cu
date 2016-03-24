@@ -58,6 +58,7 @@ private:
   // HangingNodes<dim> hanging_nodes;
 public:
   ReinitHelper(MatrixFreeGpu<dim,Number>                              *data,
+               const Mapping<dim>                                     &mapping,
                const FiniteElement<dim>                               &fe,
                const Quadrature<1>                                    &quad,
                const internal::MatrixFreeFunctions::ShapeInfo<Number> &shape_info,
@@ -67,7 +68,7 @@ public:
       fe_degree(data->fe_degree),
       dofs_per_cell(data->dofs_per_cell),
       qpts_per_cell(data->qpts_per_cell),
-      fe_values (fe, Quadrature<dim>(quad),
+      fe_values (mapping, fe, Quadrature<dim>(quad),
                  update_inverse_jacobians | update_quadrature_points |
                  update_values | update_gradients | update_JxW_values),
       lexicographic_inv(shape_info.lexicographic_numbering),
@@ -343,7 +344,8 @@ reinit(const Mapping<dim>        &mapping,
   // cell-specific stuff (indices, JxW, inverse jacobian, quadrature points, etc)
   //---------------------------------------------------------------------------
 
-  ReinitHelper<dim,Number> helper(this,fe,quad,shape_info,dof_handler,update_flags);
+  ReinitHelper<dim,Number> helper(this,mapping,fe,quad,shape_info,
+                                  dof_handler,update_flags);
 
   if(use_coloring) {
 
