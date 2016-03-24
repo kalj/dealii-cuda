@@ -205,7 +205,7 @@ FEEvaluationGpu<Number,dim,fe_degree>::get_gradient(const unsigned int q) const
 #else
     Number tmp = 0;
     for(int d2=0; d2<dim; d2++) {
-      tmp += J[n_q_points*n_cells*(dim*d1+d2)] * gradients[d2][q];
+      tmp += J[n_q_points*n_cells*(dim*d2+d1)] * gradients[d2][q];
     }
     grad[d1] = tmp;
 #endif
@@ -236,7 +236,7 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::submit_gradient(const gra
 #else
     Number tmp = 0;
     for(int d2=0; d2<dim; d2++) {
-      tmp += J[n_cells*n_q_points*(dim*d2+d1)]*grad[d2];
+      tmp += J[n_cells*n_q_points*(dim*d1+d2)]*grad[d2];
     }
     gradients[d1][q] = tmp * jxw;
 #endif
