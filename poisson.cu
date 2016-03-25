@@ -257,16 +257,11 @@ void LaplaceProblem<dim,fe_degree>::output_results (const unsigned int cycle) co
 {
   Vector<number> host_solution = solution.toVector();
   constraints.distribute(host_solution);
-  Vector<number> host_numbering = solution.toVector();
 
-  for(int i = 0; i < host_numbering.size(); ++i) {
-    host_numbering[i] = i;
-  }
   DataOut<dim> data_out;
 
   data_out.attach_dof_handler (dof_handler);
   data_out.add_data_vector (host_solution, "solution");
-  data_out.add_data_vector (host_numbering, "numbering");
   data_out.build_patches (fe_degree);
 
   std::ostringstream filename;
