@@ -518,5 +518,3 @@ void MatrixFreeGpu<dim,Number>::set_constrained_values(GpuVector <Number> &dst,
 }
 
 
-template class MatrixFreeGpu<2,double>;
-template class MatrixFreeGpu<3,double>;
