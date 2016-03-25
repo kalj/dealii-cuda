@@ -173,17 +173,21 @@ void HangingNodes<dim>::setup_line_to_cell()
         // be added (inactive cells).
 
         // we only really need to consider ONE of the inactive cells, since the
-        // edge children are all the same for all of them. We also know that since
-        // they have active edge neighbors, they will have active children. Now test this:
-
-        if(true) {
-          for(auto cl : line_to_inactive_cells[line_idx])
-            for(int i=0; i< cl.first->n_children(); ++i)
-              if(!cl.first->child(i)->active()) {
-                fprintf(stderr,"Internal error: Children of cell with active edge-neighbor must be active!\n");
-                ExcInternalError();
-              }
-        }
+        // edge children are all the same for all of them. We also know that
+        // since they have active edge neighbors, they will have active edge
+        // children. Now test this:
+#ifdef DEBUG
+        for(auto cl : line_to_inactive_cells[line_idx])
+          for(int c=0; c< 2; ++c) {
+            const unsigned int edge_child_idx = line_to_children[cl.second][c];
+            if(!cl.first->child(edge_child_idx)->active()) {
+              fprintf(stderr,"Internal error: Children of cell with active edge-neighbor must be active!\n");
+              fprintf(stderr,"                Inactive child of line %d has inactive child %d along edge\n",
+                      line_idx,edge_child_idx);
+              ExcInternalError();
+            }
+          }
+#endif
 
 
         const cell_iterator& inactive_cell = line_to_inactive_cells[line_idx][0].first;
