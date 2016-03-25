@@ -26,78 +26,28 @@ using namespace dealii;
 // coefficient
 //=============================================================================
 
-// For now we need two of these, one for the device and one for the host.
-
-template <int dim, typename Number>
+template <int dim>
 struct Coefficient
 {
-  __device__ static Number value (const GpuArray<dim,Number> &p){
-
-    return 1. / (0.05 + 2.*(p.norm_square()));
+  static __host__ double value (const Point<dim> &p){
+    // return 1. / (0.05 + 2.*(p.norm_square()));
+    return 1.;
   }
 
-  __device__ static void value_list (const GpuArray<dim,Number> *points,
-                                     Number                     *values,
-                                     const unsigned int         len) {
-    for (unsigned int i=0; i<len; ++i)
-      values[i] = value(points[i]);
+  template <typename Number>
+  static __device__ Number value (const GpuArray<dim,Number> &p){
+    // return 1. / (0.05 + 2.*(p.norm_square()));
+    return 1.;
+  }
+
+  static __host__  Tensor<1,dim> gradient (const Point<dim> &p){
+    // const Tensor<1,dim> dist = -p;
+    // const double den = 0.05 + 2.*dist.norm_square();
+    // return (4. / (den*den))*dist;
+    const Tensor<1,dim> dist = p*0;
+    return dist;
   }
 };
-
-// coefficient for cpu
-
-template <int dim>
-class Coeff : public Function<dim>
-{
-public:
-  Coeff ()  : Function<dim>() {}
-
-  virtual double value (const Point<dim>   &p,
-                        const unsigned int  component = 0) const;
-
-  template <typename number>
-  number value (const Point<dim,number> &p,
-                const unsigned int component = 0) const;
-
-  virtual void value_list (const std::vector<Point<dim> > &points,
-                           std::vector<double>            &values,
-                           const unsigned int              component = 0) const;
-};
-
-
-template <int dim>
-template <typename number>
-number Coeff<dim>::value (const Point<dim,number> &p,
-                          const unsigned int /*component*/) const
-{
-  return 1.0 / (0.05 + 2.0*p.square());
-}
-
-
-
-template <int dim>
-double Coeff<dim>::value (const Point<dim>  &p,
-                          const unsigned int component) const
-{
-  return value<double>(p,component);
-}
-
-
-
-template <int dim>
-void Coeff<dim>::value_list (const std::vector<Point<dim> > &points,
-                             std::vector<double>            &values,
-                             const unsigned int              component) const
-{
-  Assert (values.size() == points.size(),
-          ExcDimensionMismatch (values.size(), points.size()));
-  Assert (component == 0,
-          ExcIndexRange (component, 0, 1));
-
-  const unsigned int n_points = points.size();
-  for (unsigned int i=0; i<n_points; ++i)
-    values[i] = value<double>(points[i],component);
-}
 
 //=============================================================================
 // operator
@@ -204,8 +154,8 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
 
 //  initialize coefficient
 
-template <int dim, int fe_degree, typename Number, typename coefficient_function>
-__global__ void local_coeff_eval (Number                          *coeff,
+template <int dim, int fe_degree, typename Number, typename CoefficientT>
+__global__ void local_coeff_eval (Number                                            *coefficient,
                                   const typename MatrixFreeGpu<dim,Number>::GpuData gpu_data)
 {
   const unsigned int cell = threadIdx.x + blockDim.x*(blockIdx.x+gridDim.x*blockIdx.y);
@@ -217,7 +167,7 @@ __global__ void local_coeff_eval (Number                          *coeff,
 
     for (unsigned int q=0; q<n_q_points; ++q) {
       const unsigned int idx = cell*n_q_points + q;
-      coeff[idx] =  coefficient_function::value(qpts[idx]);
+      coefficient[idx] =  CoefficientT::value(qpts[idx]);
     }
 
   }
@@ -240,8 +190,10 @@ LaplaceOperatorGpu<dim,fe_degree,Number>:: evaluate_coefficient ()
 
     coefficient[c].resize (data.n_cells[c] * data.qpts_per_cell);
 
-    local_coeff_eval<dim,fe_degree,Number,Coefficient<dim,Number> > <<<grid_dim,block_dim>>>(coefficient[c].getData(),
-                                                                                             data.get_gpu_data(c));
+    local_coeff_eval<dim,fe_degree,Number, Coefficient<dim> >
+      <<<grid_dim,block_dim>>> (coefficient[c].getData(),
+                               data.get_gpu_data(c));
+
     CUDA_CHECK_LAST;
   }
 }

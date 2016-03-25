@@ -46,9 +46,195 @@ typedef double number;
 
 // #define USE_HANGING_NODES
 
+//=============================================================================
+// reference solution and right-hand side
+//=============================================================================
+
+template <int dim>
+class Solution : public Function<dim>
+{
+private:
+  static const unsigned int n_source_centers = 3;
+  static const Point<dim>   source_centers[n_source_centers];
+  static const double       width;
+
+public:
+  Solution () : Function<dim>() {}
+
+  virtual double value (const Point<dim>   &p,
+                        const unsigned int  component = 0) const;
+
+  virtual Tensor<1,dim> gradient (const Point<dim>   &p,
+                                  const unsigned int  component = 0) const;
+
+  virtual double laplacian (const Point<dim>   &p,
+                            const unsigned int  component = 0) const;
+};
+
+template <>
+const Point<1>
+Solution<1>::source_centers[Solution<1>::n_source_centers]
+= { Point<1>(-1.0 / 3.0),
+    Point<1>(0.0),
+    Point<1>(+1.0 / 3.0)   };
+
+template <>
+const Point<2>
+Solution<2>::source_centers[Solution<2>::n_source_centers]
+= { Point<2>(-0.5, +0.5),
+    Point<2>(-0.5, -0.5),
+    Point<2>(+0.5, -0.5)   };
+
+template <>
+const Point<3>
+Solution<3>::source_centers[Solution<3>::n_source_centers]
+= { Point<3>(-0.5, +0.5, 0.25),
+    Point<3>(-0.6, -0.5, -0.125),
+    Point<3>(+0.5, -0.5, 0.5)   };
+
+template <int dim>
+const double
+Solution<dim>::width = 1./3.;
+
+
+template <int dim>
+double Solution<dim>::value (const Point<dim>   &p,
+                             const unsigned int) const
+{
+  const double pi = numbers::PI;
+  double return_value = 0;
+  for (unsigned int i=0; i<this->n_source_centers; ++i)
+  {
+    const Tensor<1,dim> x_minus_xi = p - this->source_centers[i];
+    return_value += std::exp(-x_minus_xi.norm_square() /
+                             (this->width * this->width));
+  }
+
+  return return_value /
+    Utilities::fixed_power<dim>(std::sqrt(2 * pi) * this->width);
+}
+
+
+
+template <int dim>
+Tensor<1,dim> Solution<dim>::gradient (const Point<dim>   &p,
+                                       const unsigned int) const
+{
+  const double pi = numbers::PI;
+  Tensor<1,dim> return_value;
+
+  for (unsigned int i=0; i<this->n_source_centers; ++i)
+  {
+    const Tensor<1,dim> x_minus_xi = p - this->source_centers[i];
+
+    return_value += (-2 / (this->width * this->width) *
+                     std::exp(-x_minus_xi.norm_square() /
+                              (this->width * this->width)) *
+                     x_minus_xi);
+  }
+
+  return return_value / Utilities::fixed_power<dim>(std::sqrt(2 * pi) *
+                                                    this->width);
+}
+
+template <int dim>
+double Solution<dim>::laplacian (const Point<dim>   &p,
+                                 const unsigned int) const
+{
+  const double pi = numbers::PI;
+  double return_value = 0;
+  for (unsigned int i=0; i<this->n_source_centers; ++i)
+  {
+    const Tensor<1,dim> x_minus_xi = p - this->source_centers[i];
+
+    double laplacian =
+      ((-2*dim + 4*x_minus_xi.norm_square()/
+        (this->width * this->width)) /
+       (this->width * this->width) *
+       std::exp(-x_minus_xi.norm_square() /
+                (this->width * this->width)));
+    return_value += laplacian;
+  }
+  return return_value / Utilities::fixed_power<dim>(std::sqrt(2 * pi) *
+                                                    this->width);
+}
+
+// Wrapper for coefficient
+template <int dim>
+class CoefficientFun : Function<dim>
+{
+public:
+  CoefficientFun () : Function<dim>() {}
+
+  virtual double value (const Point<dim>   &p,
+                        const unsigned int  component = 0) const;
+
+  virtual void value_list (const std::vector<Point<dim> > &points,
+                           std::vector<double>            &values,
+                           const unsigned int              component = 0) const;
+
+  virtual Tensor<1,dim> gradient (const Point<dim>   &p,
+                                  const unsigned int  component = 0) const;
+};
+
+template <int dim>
+double CoefficientFun<dim>::value (const Point<dim>   &p,
+                                   const unsigned int) const
+{
+  return Coefficient<dim>::value(p); // 1. / (0.05 + 2.*((p-x_c).norm_square()));
+}
+
+template <int dim>
+void CoefficientFun<dim>::value_list (const std::vector<Point<dim> > &points,
+                                      std::vector<double>            &values,
+                                      const unsigned int              component) const
+{
+  Assert (values.size() == points.size(),
+          ExcDimensionMismatch (values.size(), points.size()));
+  Assert (component == 0,
+          ExcIndexRange (component, 0, 1));
+
+  const unsigned int n_points = points.size();
+  for (unsigned int i=0; i<n_points; ++i)
+    values[i] = value(points[i],component);
+}
+
+
+template <int dim>
+Tensor<1,dim> CoefficientFun<dim>::gradient (const Point<dim>   &p,
+                                             const unsigned int) const
+{
+  return Coefficient<dim>::gradient(p);
+}
+
+
+// function computing the right-hand side
+template <int dim>
+class RightHandSide : public Function<dim>
+{
+private:
+  Solution<dim> solution;
+  CoefficientFun<dim> coefficient;
+public:
+  RightHandSide () : Function<dim>() {}
+
+  virtual double value (const Point<dim>   &p,
+                        const unsigned int  component = 0) const;
+};
+
+
+template <int dim>
+double RightHandSide<dim>::value (const Point<dim>   &p,
+                                  const unsigned int) const
+{
+  return -(solution.laplacian(p)*coefficient.value(p)
+           + coefficient.gradient(p)*solution.gradient(p));
+}
+
 //-------------------------------------------------------------------------
 // problem
 //-------------------------------------------------------------------------
+
 
 template <int dim, int fe_degree>
 class LaplaceProblem
@@ -72,7 +258,8 @@ private:
 
   SystemMatrixType                 system_matrix;
 
-  GpuVector<number>                solution;
+  Vector<number>                   solution_host;
+  GpuVector<number>                solution_update;
   GpuVector<number>                system_rhs;
 
   double                           setup_time;
@@ -132,7 +319,8 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
             << " MB."
             << std::endl;
 
-  solution.reinit (dof_handler.n_dofs());
+  solution_host.reinit (dof_handler.n_dofs());
+  solution_update.reinit (dof_handler.n_dofs());
   system_rhs.reinit (dof_handler.n_dofs());
 
   setup_time += time.wall_time();
@@ -146,6 +334,13 @@ template <int dim, int fe_degree>
 void LaplaceProblem<dim,fe_degree>::assemble_system ()
 {
   Timer time;
+
+  std::map<types::global_dof_index, double> boundary_values;
+  VectorTools::interpolate_boundary_values(dof_handler, 0, Solution<dim>(), boundary_values);
+  for (typename std::map<types::global_dof_index, double>::const_iterator
+         it = boundary_values.begin(); it!=boundary_values.end(); ++it)
+    solution_host(it->first) = it->second;
+
   QGauss<dim>  quadrature_formula(fe.degree+1);
   FEValues<dim> fe_values (fe, quadrature_formula,
                            update_values   | update_gradients |
@@ -156,15 +351,17 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
+  Vector<number> diagonal(dof_handler.n_dofs());
   Vector<number> local_diagonal(dofs_per_cell);
 
   std::vector<number> coefficient_values(n_q_points);
 
-  Vector<number> diagonal(dof_handler.n_dofs());
-
   Vector<number> system_rhs_host(dof_handler.n_dofs());
+  RightHandSide<dim> right_hand_side;
+  std::vector<double> rhs_values(n_q_points);
+  std::vector<Tensor<1,dim> > solution_gradients(n_q_points);
 
-  Coeff<dim> coeff;
+  CoefficientFun<dim> coeff;
 
   typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active(),
     endc = dof_handler.end();
@@ -176,14 +373,19 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
     // coefficient needed here for diagonal
     coeff.value_list(fe_values.get_quadrature_points(), coefficient_values);
 
+    fe_values.get_function_gradients(solution_host, solution_gradients);
+    right_hand_side.value_list(fe_values.get_quadrature_points(), rhs_values);
+
     for (unsigned int i=0; i<dofs_per_cell; ++i)
     {
 
-
       number rhs_val = 0;
       number local_diag = 0;
+
       for (unsigned int q=0; q<n_q_points; ++q) {
-        rhs_val += (fe_values.shape_value(i,q) * 1.0 *
+        rhs_val += ((fe_values.shape_value(i,q) * rhs_values[q]
+                     - fe_values.shape_grad(i,q) * solution_gradients[q]
+                     ) *
                     fe_values.JxW(q));
 
 
@@ -238,7 +440,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
   time.reset();
   time.start();
-  cg.solve (system_matrix, solution, system_rhs,
+  cg.solve (system_matrix, solution_update, system_rhs,
             // PreconditionIdentity());
             preconditioner);
 
@@ -248,6 +450,25 @@ void LaplaceProblem<dim,fe_degree>::solve ()
             << solver_control.last_step()
             << " iterations)  (CPU/wall) " << time() << "s/"
             << time.wall_time() << "s\n";
+
+
+  Vector<number> solution_update_host = solution_update.toVector();
+  constraints.distribute(solution_update_host);
+  solution_host += solution_update_host;
+
+
+  Vector<float> difference_per_cell (triangulation.n_active_cells());
+  VectorTools::integrate_difference (dof_handler,
+                                     solution_host,
+                                     Solution<dim>(),
+                                     difference_per_cell,
+                                     QGauss<dim>(fe.degree+2),
+                                     VectorTools::L2_norm);
+  const double L2_error = difference_per_cell.norm_sqr();
+
+  std::cout.precision(6);
+  std::cout << "L2 error: " << L2_error << std::endl;
+
 }
 
 
@@ -255,13 +476,10 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 template <int dim, int fe_degree>
 void LaplaceProblem<dim,fe_degree>::output_results (const unsigned int cycle) const
 {
-  Vector<number> host_solution = solution.toVector();
-  constraints.distribute(host_solution);
-
   DataOut<dim> data_out;
 
   data_out.attach_dof_handler (dof_handler);
-  data_out.add_data_vector (host_solution, "solution");
+  data_out.add_data_vector (solution_host, "solution");
   data_out.build_patches (fe_degree);
 
   std::ostringstream filename;
