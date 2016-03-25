@@ -45,9 +45,9 @@ __host__ __device__ constexpr unsigned int cells_per_block_shmem(int dim,
   return MATRIX_FREE_CELLS_PER_BLOCK;
 #else
   return dim==2 ? (fe_degree==1 ? 32
-                   : fe_degree==2 ? 8
+                   : fe_degree==2 ? 2 // 8
                    : fe_degree==3 ? 4
-                   : fe_degree==4 ? 4
+                   : fe_degree==4 ? 2 // 4
                    : 0) :
     dim==3 ? (fe_degree==1 ? 8
               : fe_degree==2 ? 2
