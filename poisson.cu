@@ -24,6 +24,7 @@
 #include <deal.II/grid/tria_iterator.h>
 #include <deal.II/grid/tria_boundary_lib.h>
 #include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/manifold_lib.h>
 
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/vector_tools.h>
@@ -491,48 +492,88 @@ void LaplaceProblem<dim,fe_degree>::output_results (const unsigned int cycle) co
   data_out.write_vtu (output);
 }
 
+template <int dim>
+bool all_criterion(const Point<dim> &p) {
+  return true;
+}
+
+template <int dim>
+bool octant_criterion(const Point<dim> &p) {
+  bool ref = true;
+  for(int d=0; d<dim; d++)
+    ref = ref && p[d] > 0.2;
+  return ref;
+}
+
+template <int dim>
+bool random_criterion(const Point<dim> &p) {
+  double r = (double)rand() / RAND_MAX;
+  return r<0.5;
+}
+
+
+template <int dim>
+void mark_cells(Triangulation<dim> &triangulation,
+                bool (*crit)(const Point<dim> &))
+{
+  typename Triangulation<dim>::active_cell_iterator
+    it = triangulation.begin_active(),
+    end = triangulation.end();
+  for(; it != end; ++it) {
+
+    if(crit(it->center()))
+      it->set_refine_flag();
+  }
+}
 
 template <int dim, int fe_degree>
 void LaplaceProblem<dim,fe_degree>::run ()
 {
+  enum grid_case_t { uniform, nonuniform, random};
+
+  enum domain_case_t { cube, ball, };
+
+  domain_case_t domain = cube;
+  grid_case_t initial_grid = uniform;
+  grid_case_t grid_refinement = uniform;
+
   for (unsigned int cycle=0; cycle<7-dim; ++cycle)
   {
     std::cout << "Cycle " << cycle << std::endl;
 
     if (cycle == 0)
     {
-      GridGenerator::hyper_cube (triangulation, 0., 1.);
-
-      triangulation.refine_global (1);
-#ifdef USE_HANGING_NODES
-      {
-        typename Triangulation<dim>::active_cell_iterator
-          it = triangulation.begin_active(),
-          end = triangulation.end();
-        for(; it != end; ++it) {
-          const Point<dim> p = it->center();
-
-          // for refinement of the top, left, back octant only
-          if((p[0] > 0.5) &&
-             (p[1] > 0.5) &&
-             (p[2] > 0.5)) it->set_refine_flag();
-
-          // refinement of anything but the lower left two octants. this allows
-          // for edge-only constraints of the elements positioned diagonally to
-          // the unrefined octants.
-
-          // if((p[0] > 0.5) || (p[2] > 0.5)) it->set_refine_flag();
-
-        }
-        triangulation.execute_coarsening_and_refinement();
+      if(domain == cube) {
+        GridGenerator::subdivided_hyper_cube (triangulation, 2, -1., 1.);
       }
-#else
-      triangulation.refine_global (1);
-#endif
+      else if(domain == ball) {
+        GridGenerator::hyper_ball (triangulation);
+        static const SphericalManifold<dim> boundary;
+        triangulation.set_all_manifold_ids_on_boundary(0);
+        triangulation.set_manifold (0, boundary);
+      }
+
+      triangulation.refine_global (3-dim);
+
+      if(initial_grid == uniform)
+        mark_cells(triangulation,all_criterion<dim>);
+      else if(initial_grid == nonuniform)
+        mark_cells(triangulation,octant_criterion<dim>);
+      else if(initial_grid == random)
+        mark_cells(triangulation,random_criterion<dim>);
+
+      triangulation.execute_coarsening_and_refinement();
 
     }
     else {
-      triangulation.refine_global (1);
+      if(grid_refinement == uniform)
+        mark_cells(triangulation,all_criterion<dim>);
+      else if(grid_refinement == nonuniform)
+        mark_cells(triangulation,octant_criterion<dim>);
+      else if(grid_refinement == random)
+        mark_cells(triangulation,random_criterion<dim>);
+
+      triangulation.execute_coarsening_and_refinement();
     }
 
     setup_system ();
@@ -562,6 +603,7 @@ const unsigned int dimension = 3;
 int main()
 {
 
+  srand(1);
   printf("d: %d, p: %d\n",dimension,degree_finite_element);
 
   try
