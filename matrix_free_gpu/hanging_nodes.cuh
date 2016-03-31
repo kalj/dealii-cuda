@@ -53,6 +53,8 @@ using namespace dealii;
 //=============================================================================
 // setup functions
 //=============================================================================
+template <int dim>
+void setup_constraint_weights(unsigned int fe_degree);
 
 template <int dim>
 class HangingNodes {
@@ -77,7 +79,7 @@ public:
     // setup line-to-cell mapping for edge constraints
     setup_line_to_cell(); // does nothing for dim==2
 
-    setup_constraint_weights();
+    setup_constraint_weights<dim>(fe_degree);
   }
 
 
@@ -103,7 +105,6 @@ private:
 
   static void transpose_subface_index(unsigned int &subface);
 
-  void setup_constraint_weights();
 
 };
 
@@ -636,7 +637,7 @@ void HangingNodes<dim>::transpose_subface_index(unsigned int &subface)
 }
 
 template <int dim>
-void HangingNodes<dim>::setup_constraint_weights() {
+void setup_constraint_weights(unsigned int fe_degree) {
   FE_Q<2> fe_q(fe_degree);
   FullMatrix<double> interpolation_matrix(fe_q.dofs_per_face,
                                           fe_q.dofs_per_face);

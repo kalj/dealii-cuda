@@ -20,12 +20,6 @@ using namespace dealii;
 
 typedef double Number;
 
-template <unsigned int dim, unsigned int fe_degree>
-__global__ void pmem_kernel(Number *vec, const unsigned int mask)
-{
-
-  resolve_hanging_nodes_pmem<dim,fe_degree,NOTRANSPOSE> (vec, mask);
-}
 
 template <unsigned int dim, unsigned int fe_degree>
 __global__ void shmem_kernel(Number *vec, const unsigned int mask)
@@ -93,29 +87,29 @@ void setup_values(Number * vec, const unsigned int mask)
   const unsigned int n_dofs_1d = fe_degree+1;
 
   if(dim==2) {
-    if(mask & CONSTR_X) {
+    if(mask & CONSTR_FACE_X) {
 
       for(int i = 0; i < n_dofs_1d; ++i) {
-        unsigned int j= (mask & CONSTR_X_TYPE)? 0 : fe_degree;
+        unsigned int j= (mask & CONSTR_TYPE_X)? 0 : fe_degree;
 
         Number x = Number(j)/fe_degree;
         Number y = (Number(i)*2)/fe_degree;
 
-        if(!(mask & CONSTR_Y_TYPE))
+        if(!(mask & CONSTR_TYPE_Y))
           y -= 1.0;
         vec[j + i*n_dofs_1d] = foo(x,y,1);
       }
     }
 
-    if(mask & CONSTR_Y) {
+    if(mask & CONSTR_FACE_Y) {
 
       for(int j = 0; j < n_dofs_1d; ++j) {
-        unsigned int i= (mask & CONSTR_Y_TYPE)? 0 : fe_degree;
+        unsigned int i= (mask & CONSTR_TYPE_Y)? 0 : fe_degree;
 
         Number x = (Number(j)*2)/fe_degree;
         Number y = Number(i)/fe_degree;
 
-        if(!(mask & CONSTR_X_TYPE))
+        if(!(mask & CONSTR_TYPE_X))
           x -= 1.0;
         vec[j + i*n_dofs_1d] = foo(x,y,1);
       }
@@ -123,20 +117,20 @@ void setup_values(Number * vec, const unsigned int mask)
   }
   else { // 3D
     // yz plane
-    if(mask & CONSTR_X) {
+    if(mask & CONSTR_FACE_X) {
 
       for(int i = 0; i < n_dofs_1d; ++i) {
         for(int j = 0; j < n_dofs_1d; ++j) {
-          unsigned int k= (mask & CONSTR_X_TYPE)? 0 : fe_degree;
+          unsigned int k= (mask & CONSTR_TYPE_X)? 0 : fe_degree;
 
           Number x = Number(k)/fe_degree;
           Number y = Number(2*j)/fe_degree;
           Number z = Number(2*i)/fe_degree;
 
-          if(!(mask & CONSTR_Y_TYPE))
+          if(!(mask & CONSTR_TYPE_Y))
             y -= 1.0;
 
-          if(!(mask & CONSTR_Z_TYPE))
+          if(!(mask & CONSTR_TYPE_Z))
             z -= 1.0;
 
           vec[k+ n_dofs_1d*(j + i*n_dofs_1d)] = foo(x,y,z);
@@ -145,20 +139,20 @@ void setup_values(Number * vec, const unsigned int mask)
     }
 
     // xz plane
-    if(mask & CONSTR_Y) {
+    if(mask & CONSTR_FACE_Y) {
 
       for(int i = 0; i < n_dofs_1d; ++i) {
         for(int k = 0; k < n_dofs_1d; ++k) {
-          unsigned int j= (mask & CONSTR_Y_TYPE)? 0 : fe_degree;
+          unsigned int j= (mask & CONSTR_TYPE_Y)? 0 : fe_degree;
 
           Number x = Number(2*k)/fe_degree;
           Number y = Number(j)/fe_degree;
           Number z = Number(2*i)/fe_degree;
 
-          if(!(mask & CONSTR_X_TYPE))
+          if(!(mask & CONSTR_TYPE_X))
             x -= 1.0;
 
-          if(!(mask & CONSTR_Z_TYPE))
+          if(!(mask & CONSTR_TYPE_Z))
             z -= 1.0;
 
           vec[k+ n_dofs_1d*(j + i*n_dofs_1d)] = foo(x,y,z);
@@ -167,20 +161,20 @@ void setup_values(Number * vec, const unsigned int mask)
     }
 
     // xy plane
-    if(mask & CONSTR_Z) {
+    if(mask & CONSTR_FACE_Z) {
 
       for(int j = 0; j < n_dofs_1d; ++j) {
         for(int k = 0; k < n_dofs_1d; ++k) {
-          unsigned int i= (mask & CONSTR_Z_TYPE)? 0 : fe_degree;
+          unsigned int i= (mask & CONSTR_TYPE_Z)? 0 : fe_degree;
 
           Number x = Number(2*k)/fe_degree;
           Number y = Number(2*j)/fe_degree;
           Number z = Number(i)/fe_degree;
 
-          if(!(mask & CONSTR_X_TYPE))
+          if(!(mask & CONSTR_TYPE_X))
             x -= 1.0;
 
-          if(!(mask & CONSTR_Y_TYPE))
+          if(!(mask & CONSTR_TYPE_Y))
             y -= 1.0;
 
           vec[k+ n_dofs_1d*(j + i*n_dofs_1d)] = foo(x,y,z);
@@ -191,12 +185,13 @@ void setup_values(Number * vec, const unsigned int mask)
 }
 
 template <unsigned int dim, unsigned int fe_degree>
-double test_constraint(unsigned int mask, bool pmem, bool verbose)
+double test_constraint(unsigned int mask, 
+                       bool verbose)
 {
   const unsigned int n_dofs_1d = fe_degree+1;
   const unsigned int n_dofs = ipowf(n_dofs_1d,dim);
 
-  setup_constraint_weights(fe_degree);
+  setup_constraint_weights<dim>(fe_degree);
 
   Number *vec_dev;
   Number *vec_host = new Number[n_dofs];
@@ -243,19 +238,12 @@ double test_constraint(unsigned int mask, bool pmem, bool verbose)
 
   CUDA_CHECK_SUCCESS(cudaMemcpy(vec_dev,vec_host,size,cudaMemcpyHostToDevice));
 
-  if(pmem)
-  {
-    pmem_kernel<dim,fe_degree> <<<1,1>>> (vec_dev,mask);
-  }
-  else
-  {
     dim3 grid_dim(1);
     dim3 block_dim;
     if(dim==3) block_dim = dim3(n_dofs_1d,n_dofs_1d,n_dofs_1d);
     else if(dim==2) block_dim = dim3(n_dofs_1d,n_dofs_1d);
 
     shmem_kernel<dim,fe_degree> <<<grid_dim, block_dim >>> (vec_dev,mask);
-  }
 
 
   CUDA_CHECK_SUCCESS(cudaMemcpy(vec_host,vec_dev,size,cudaMemcpyDeviceToHost));
@@ -289,25 +277,25 @@ void print_mask(unsigned int mask)
 
   std::vector<std::string> strvec;
 
-  if(mask & CONSTR_X)
-    strvec.push_back("CONSTR_X");
-  if(mask & CONSTR_Y)
-    strvec.push_back("CONSTR_Y");
-  if(mask & CONSTR_Z)
-    strvec.push_back("CONSTR_Z");
-  if(mask & CONSTR_X_TYPE)
-    strvec.push_back("CONSTR_X_TYPE");
-  if(mask & CONSTR_Y_TYPE)
-    strvec.push_back("CONSTR_Y_TYPE");
-  if(mask & CONSTR_Z_TYPE)
-    strvec.push_back("CONSTR_Z_TYPE");
+  if(mask & CONSTR_FACE_X)
+    strvec.push_back("CONSTR_FACE_X");
+  if(mask & CONSTR_FACE_Y)
+    strvec.push_back("CONSTR_FACE_Y");
+  if(mask & CONSTR_FACE_Z)
+    strvec.push_back("CONSTR_FACE_Z");
+  if(mask & CONSTR_TYPE_X)
+    strvec.push_back("CONSTR_TYPE_X");
+  if(mask & CONSTR_TYPE_Y)
+    strvec.push_back("CONSTR_TYPE_Y");
+  if(mask & CONSTR_TYPE_Z)
+    strvec.push_back("CONSTR_TYPE_Z");
 
   std::string joined = boost::algorithm::join(strvec," | ");
   std::cout << joined << std::endl;
 }
 
 template <int dim, int p>
-void loop_over_constraints(bool pmem, bool combinations)
+void loop_over_constraints(bool combinations)
 {
   printf("---- %dD, order %d ----\n",dim,p);
 
@@ -326,7 +314,8 @@ void loop_over_constraints(bool pmem, bool combinations)
       else
         mask |= 1<<xyz;
 
-      double err = test_constraint<dim,p>(mask, pmem, false);
+      double err = test_constraint<dim,p>(mask,
+                                          false);
 
       // std::cout << "mask: " << std::bitset<6>(mask) << std::endl;
       if(err > 0) {
@@ -350,30 +339,19 @@ int main(int argc, char *argv[])
 {
   bool combinations = true;
 
-  // for(bool pmem : {true,false}) {
-    bool pmem = false;
+  printf("======================================================================\n");
+  printf("= Performing tests for version using parallelization within elements =\n");
+  printf("======================================================================\n");
 
-    if(pmem) {
-      printf("=======================================================================\n");
-      printf("= Performing tests for version using parallelization between elements =\n");
-      printf("=======================================================================\n");
-    }
-    else {
-      printf("======================================================================\n");
-      printf("= Performing tests for version using parallelization within elements =\n");
-      printf("======================================================================\n");
-    }
+  loop_over_constraints<2,1>(/*pmem,*/combinations);
+  loop_over_constraints<2,2>(/*pmem,*/combinations);
+  loop_over_constraints<2,3>(/*pmem,*/combinations);
+  loop_over_constraints<2,4>(/*pmem,*/combinations);
 
-    loop_over_constraints<2,1>(pmem,combinations);
-    loop_over_constraints<2,2>(pmem,combinations);
-    loop_over_constraints<2,3>(pmem,combinations);
-    loop_over_constraints<2,4>(pmem,combinations);
-
-    loop_over_constraints<3,1>(pmem,combinations);
-    loop_over_constraints<3,2>(pmem,combinations);
-    loop_over_constraints<3,3>(pmem,combinations);
-    loop_over_constraints<3,4>(pmem,combinations);
-  // }
+  loop_over_constraints<3,1>(/*pmem,*/combinations);
+  loop_over_constraints<3,2>(/*pmem,*/combinations);
+  loop_over_constraints<3,3>(/*pmem,*/combinations);
+  loop_over_constraints<3,4>(/*pmem,*/combinations);
 
   return 0;
 }
