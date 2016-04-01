@@ -25,6 +25,7 @@ GpuVector<Number>::DevRef& GpuVector<Number>::DevRef::operator=(const Number val
 {
   CUDA_CHECK_SUCCESS(cudaMemcpy(ptr,&value,sizeof(Number),
                                 cudaMemcpyHostToDevice));
+  return *this;
 }
 
 template <typename Number>
