@@ -127,9 +127,9 @@ void ReinitHelper<dim,Number>::setup_cell_arrays(const unsigned int c)
     if(dim==1)
       data->block_dim[c] = dim3(n_dofs_1d*cells_per_block);
     else if(dim==2)
-      data->block_dim[c] = dim3(n_dofs_1d*cells_per_block,n_dofs_1d);
+      data->block_dim[c] = dim3(n_dofs_1d,n_dofs_1d*cells_per_block);
     else if(dim==3)
-      data->block_dim[c] = dim3(n_dofs_1d*cells_per_block,n_dofs_1d,n_dofs_1d);
+      data->block_dim[c] = dim3(n_dofs_1d,n_dofs_1d,n_dofs_1d*cells_per_block);
   }
   else {
     data->block_dim[c] = dim3(cells_per_block);

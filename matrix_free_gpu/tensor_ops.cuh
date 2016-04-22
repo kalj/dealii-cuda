@@ -52,8 +52,8 @@ struct TensorOpsShmem {
     }
     else if(dim==2)
     {
-      const unsigned int i = (threadIdx.x%n); // unchanged index
-      const unsigned int q = threadIdx.y; // new index
+      const unsigned int q = threadIdx.x; // new index
+      const unsigned int i = (threadIdx.y%n); // unchanged index
 
       Number t = 0;
       for(int k = 0; k < n; ++k) { // contracted index
@@ -83,9 +83,9 @@ struct TensorOpsShmem {
     }
     else if(dim==3)
     {
-      const unsigned int i = (threadIdx.x%n); // two unchanged
-      const unsigned int j = threadIdx.y; // indices
-      const unsigned int q = threadIdx.z; // new index
+      const unsigned int q = threadIdx.x; // new index
+      const unsigned int i = threadIdx.y; // two unchanged
+      const unsigned int j = threadIdx.z%n; // indices
 
       Number t = 0;
       for(int k = 0; k < n; ++k) { // contracted index

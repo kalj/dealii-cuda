@@ -242,7 +242,7 @@ __global__ void apply_kernel_shmem (Number                          *dst,
   __shared__ Number values[cells_per_block*LocOp::n_local_dofs];
   __shared__ Number gradients[dim][cells_per_block*LocOp::n_q_points];
 
-  const unsigned int local_cell = (threadIdx.x/LocOp::n_dofs_1d);
+  const unsigned int local_cell = (threadIdx.z/LocOp::n_dofs_1d);
   const unsigned int cell = local_cell + cells_per_block*(blockIdx.x+gridDim.x*blockIdx.y);
 
   Number *gq[dim];
