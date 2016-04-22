@@ -274,7 +274,7 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Num
     +(dim>2 ? threadIdx.z : 0)*n_q_points_1d*n_q_points_1d;
 
   const unsigned int srcidx = loc2glob[idx];
-  values[idx] = src[srcidx];
+  values[idx] = __ldg(&src[srcidx]);
 
   // if(constraint_mask)
   //   resolve_hanging_nodes_shmem<dim,fe_degree,NOTRANSPOSE>(values,constraint_mask);
