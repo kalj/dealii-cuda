@@ -22,8 +22,8 @@
 template <int dim, int n, typename Number>
 struct TensorOpsShmem {
 
-  template <int redidx, bool phi_tr, bool add, bool with_gradients, bool inplace>
-  static inline __device__ void contraction(Number *dst, const Number *src)
+  template <int redidx, bool add, bool inplace>
+  static inline __device__ void contraction(Number *dst, const Number *src, const Number *shape_buf)
   {
     assert(redidx >= 0 && redidx < dim);
 
@@ -33,13 +33,7 @@ struct TensorOpsShmem {
 
       Number t = 0;
       for(int k = 0; k < n; ++k) { // contracted index
-
-        const unsigned int shapeidx = phi_tr ? (q+k*n) : (k+q*n);
-
-        if(with_gradients)
-          t += shape_gradient[shapeidx] * (inplace ? dst[k] : src[k]);
-        else
-          t += shape_values[shapeidx] * (inplace ? dst[k] : src[k]);
+          t += shape_buf[k] * (inplace ? dst[k] : src[k]);
       }
 
       if(inplace) __syncthreads();
@@ -58,17 +52,12 @@ struct TensorOpsShmem {
       Number t = 0;
       for(int k = 0; k < n; ++k) { // contracted index
 
-        const unsigned int shapeidx = phi_tr ? (q+k*n) : (k+q*n);
         const unsigned int srcidx =
           (redidx==0) ? (k + n*i)
           : (i + n*k);
 
-        if(with_gradients)
-          t += shape_gradient[shapeidx] * (inplace ? dst[srcidx] : src[srcidx]);
-        else
-          t += shape_values[shapeidx] * (inplace ? dst[srcidx] : src[srcidx]);
+          t += shape_buf[k] * (inplace ? dst[srcidx] : src[srcidx]);
       }
-
 
       if(inplace) __syncthreads();
 
@@ -90,16 +79,12 @@ struct TensorOpsShmem {
       Number t = 0;
       for(int k = 0; k < n; ++k) { // contracted index
 
-        const unsigned int shapeidx = phi_tr ? (q+k*n) : (k+q*n);
         const unsigned int srcidx =
           (redidx==0) ? (k + n*(i + n*j))
           : (redidx==1) ? (i + n*(k + n*j))
           : (i + n*(j + n*k));
 
-        if(with_gradients)
-          t += shape_gradient[shapeidx] * (inplace ? dst[srcidx] : src[srcidx]);
-        else
-          t += shape_values[shapeidx] * (inplace ? dst[srcidx] : src[srcidx]);
+          t += shape_buf[k] * (inplace ? dst[srcidx] : src[srcidx]);
       }
 
       if(inplace) __syncthreads();
@@ -119,143 +104,178 @@ struct TensorOpsShmem {
 
   static inline __device__ void fun_at_quad_pts(Number *u)
   {
+    // Stage column of shape_values:
+    Number shape_values_buf[n];
+
+#pragma unroll
+    for(int i = 0; i < n; i++) {
+      shape_values_buf[i] = shape_values[threadIdx.x + n*i];
+    }
+
+
     if(dim==1) {
-      contraction<0,true,false,false,true> (u,u);
+      contraction<0,false,true> (u,u,shape_values_buf);
     }
     else if(dim==2) {
 
       // reduce along x / i / q - direction
-      contraction<0,true,false,false,true> (u,u);
+      contraction<0,false,true> (u,u,shape_values_buf);
       __syncthreads();
 
       // reduce along y / j / r - direction
-      contraction<1,true,false,false,true> (u,u);
+      contraction<1,false,true> (u,u,shape_values_buf);
     }
     else if(dim==3) {
 
       // reduce along x / i / q - direction
-      contraction<0,true,false,false,true> (u,u);
+      contraction<0,false,true> (u,u,shape_values_buf);
       __syncthreads();
 
       // reduce along y / j / r - direction
-      contraction<1,true,false,false,true> (u,u);
+      contraction<1,false,true> (u,u,shape_values_buf);
       __syncthreads();
 
       // reduce along z / k / q - direction
-      contraction<2,true,false,false,true> (u,u);
+      contraction<2,false,true> (u,u,shape_values_buf);
     }
   }
 
 
   static inline __device__ void quad_int_fun(Number *u)
   {
+    // Stage row of shape_values:
+    Number shape_values_buf[n];
+
+#pragma unroll
+    for(int i = 0; i < n; i++) {
+      shape_values_buf[i] = shape_values[threadIdx.x*n+i];
+    }
+
     if(dim==1) {
-      contraction<0,false,false,false,true> (u,u);
+      contraction<0,false,true> (u,u,shape_values_buf);
     }
     else if(dim==2) {
 
       // reduce along x / i / q - direction
-      contraction<0,false,false,false,true> (u,u);
+      contraction<0,false,true> (u,u,shape_values_buf);
       __syncthreads();
 
       // reduce along y / j / r - direction
-      contraction<1,false,false,false,true> (u,u);
+      contraction<1,false,true> (u,u,shape_values_buf);
     }
     else if(dim==3) {
 
       // reduce along x / i / q - direction
-      contraction<0,false,false,false,true> (u,u);
+      contraction<0,false,true> (u,u,shape_values_buf);
       __syncthreads();
 
       // reduce along y / j / r - direction
-      contraction<1,false,false,false,true> (u,u);
+      contraction<1,false,true> (u,u,shape_values_buf);
       __syncthreads();
 
       // reduce along z / k / s - direction
-      contraction<2,false,false,false,true> (u,u);
+      contraction<2,false,true> (u,u,shape_values_buf);
     }
   }
 
   static inline __device__ void grad_at_quad_pts(Number *duq[dim], const Number * const u)
   {
+    // Stage column of shape_values:
+    Number shape_values_buf[n];
+    Number shape_gradient_buf[n];
+
+#pragma unroll
+    for(int i = 0; i < n; i++) {
+      shape_values_buf[i] = shape_values[threadIdx.x + n*i];
+      shape_gradient_buf[i] = shape_gradient[threadIdx.x + n*i];
+    }
+
+
     if(dim==1) {
-      contraction<0,true,false,true,false> (duq[0],u);
+      contraction<0,false,false> (duq[0],u,shape_gradient_buf);
     }
     else if(dim==2) {
 
       // reduce along x / i / q - direction
-      contraction<0,true,false,true,false> (duq[0],u);
-      contraction<0,true,false,false,false> (duq[1],u);
+      contraction<0,false,false> (duq[0],u,shape_gradient_buf);
+      contraction<0,false,false> (duq[1],u,shape_values_buf);
 
       __syncthreads();
 
       // reduce along y / j / r - direction
-      contraction<1,true,false,false,true> (duq[0],duq[0]);
-      contraction<1,true,false,true,true> (duq[1],duq[1]);
+      contraction<1,false,true> (duq[0],duq[0],shape_values_buf);
+      contraction<1,false,true>  (duq[1],duq[1],shape_gradient_buf);
     }
     else if(dim==3) {
 
       // reduce along x / i / q - direction
-      contraction<0,true,false,true,false> (duq[0],u);
-      contraction<0,true,false,false,false> (duq[1],u);
-      contraction<0,true,false,false,false> (duq[2],u);
+      contraction<0,false,false> (duq[0],u,shape_gradient_buf);
+      contraction<0,false,false> (duq[1],u,shape_values_buf);
+      contraction<0,false,false> (duq[2],u,shape_values_buf);
       __syncthreads();
 
       // reduce along y / j / r - direction
-      contraction<1,true,false,false,true> (duq[0],duq[0]);
-      // contraction<1,true,false,false,false> (duq[2],duq[1]);
-      // __syncthreads();
-      contraction<1,true,false,true,true>  (duq[1],duq[1]);
-      contraction<1,true,false,false,true> (duq[2],duq[2]);
+      contraction<1,false,true> (duq[0],duq[0],shape_values_buf);
+      contraction<1,false,true>  (duq[1],duq[1],shape_gradient_buf);
+      contraction<1,false,true> (duq[2],duq[2],shape_values_buf);
       __syncthreads();
 
       // reduce along z / k / s - direction
-      contraction<2,true,false,false,true> (duq[0],duq[0]);
-      contraction<2,true,false,false,true> (duq[1],duq[1]);
-      contraction<2,true,false,true,true>  (duq[2],duq[2]);
+      contraction<2,false,true> (duq[0],duq[0],shape_values_buf);
+      contraction<2,false,true> (duq[1],duq[1],shape_values_buf);
+      contraction<2,false,true>  (duq[2],duq[2],shape_gradient_buf);
     }
   }
 
   template <bool add>
   static inline __device__ void quad_int_grad(Number *u, Number * duq[dim])
   {
+    // Stage row of shape_values:
+    Number shape_values_buf[n];
+    Number shape_gradient_buf[n];
+
+#pragma unroll
+    for(int i = 0; i < n; i++) {
+      shape_values_buf[i] = shape_values[threadIdx.x*n + i];
+      shape_gradient_buf[i] = shape_gradient[threadIdx.x*n + i];
+    }
+
+
     if(dim==1) {
-      contraction<0,false,add,true,false> (u,duq[0]);
+      contraction<0,add,false> (u,duq[0],shape_gradient_buf);
     }
     else if(dim==2) {
 
       // reduce along x / i / q - direction
-      contraction<0,false,false,true,true> (duq[0],duq[0]);
-      contraction<0,false,false,false,true> (duq[1],duq[1]);
+      contraction<0,false,true> (duq[0],duq[0],shape_gradient_buf);
+      contraction<0,false,true> (duq[1],duq[1],shape_values_buf);
       __syncthreads();
 
       // reduce along y / j / r - direction
-      contraction<1,false,add,false,false> (u,duq[0]);
+      contraction<1,add,false> (u,duq[0],shape_values_buf);
       __syncthreads();
-      contraction<1,false,true,true,false> (u,duq[1]);
+      contraction<1,true,false> (u,duq[1],shape_gradient_buf);
     }
     else if(dim==3) {
 
       // reduce along x / i / q - direction
-      contraction<0,false,false,true,true>  (duq[0],duq[0]);
-      contraction<0,false,false,false,true> (duq[1],duq[1]);
-      contraction<0,false,false,false,true> (duq[2],duq[2]);
+      contraction<0,false,true>  (duq[0],duq[0],shape_gradient_buf);
+      contraction<0,false,true> (duq[1],duq[1],shape_values_buf);
+      contraction<0,false,true> (duq[2],duq[2],shape_values_buf);
       __syncthreads();
 
       // reduce along y / j / r - direction
-      contraction<1,false,false,false,true> (duq[0],duq[0]);
-      // contraction<1,false,false,false,false> (duq[2],duq[1]);
-      // __syncthreads();
-      contraction<1,false,false,true,true>  (duq[1],duq[1]);
-      contraction<1,false,false,false,true> (duq[2],duq[2]);
+      contraction<1,false,true> (duq[0],duq[0],shape_values_buf);
+      contraction<1,false,true>  (duq[1],duq[1],shape_gradient_buf);
+      contraction<1,false,true> (duq[2],duq[2],shape_values_buf);
       __syncthreads();
 
       // reduce along z / k / s - direction
-      contraction<2,false,add,false,false> (u,duq[0]);
+      contraction<2,add,false> (u,duq[0],shape_values_buf);
       __syncthreads();
-      contraction<2,false,true,false,false> (u,duq[1]);
+      contraction<2,true,false> (u,duq[1],shape_values_buf);
       __syncthreads();
-      contraction<2,false,true,true,false> (u,duq[2]);
+      contraction<2,true,false> (u,duq[2],shape_gradient_buf);
 
     }
   }
