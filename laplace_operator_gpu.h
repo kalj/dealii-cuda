@@ -264,9 +264,6 @@ struct LocalOperator {
 
     phi.evaluate (false,true);
 
-    // no synch needed since local operation works on 'own' value
-    // __syncthreads();
-
     // apply the local operation above
     phi.apply_quad_point_operations(this);
 

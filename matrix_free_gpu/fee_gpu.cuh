@@ -145,7 +145,9 @@ public:
   // particularities of how to loop over quadrature points from user).
   template <typename LocOp>
   __device__ void apply_quad_point_operations(const LocOp *lop) {
-    const unsigned int q = (threadIdx.x)+n_dofs_1d*threadIdx.y+(dim==3 ?(n_dofs_1d*n_dofs_1d*(threadIdx.z%n_dofs_1d)) : 0);
+    const unsigned int q = (dim==1 ? threadIdx.x%n_dofs_1d :
+                            dim==2 ? threadIdx.x + n_dofs_1d*(threadIdx.y%n_dofs_1d) :
+                            threadIdx.x + n_dofs_1d*(threadIdx.y + n_dofs_1d*(threadIdx.z%n_dofs_1d)));
     lop->quad_operation(this,q,cellid*n_q_points+q);
   }
 
@@ -182,6 +184,7 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::evaluate(const bool evalu
     if(evaluate_grad) __syncthreads();
     TensorOpsShmem<dim,fe_degree+1,Number>::fun_at_quad_pts (values);
   }
+  __syncthreads();
 }
 
 template <typename Number, int dim, int fe_degree>
@@ -260,6 +263,8 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::integrate(const bool inte
   }
   else if(integrate_grad)
     TensorOpsShmem<dim,fe_degree+1,Number>::quad_int_grad<false> (values,gradients);
+
+  __syncthreads();
 }
 
 //=============================================================================
@@ -269,9 +274,9 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::integrate(const bool inte
 template <typename Number, int dim, int fe_degree>
 __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Number *src)
 {
-  const unsigned int  idx = (threadIdx.x)
-    +(dim>1 ? threadIdx.y : 0)*n_q_points_1d
-    +(dim>2 ? (threadIdx.z%n_q_points_1d) : 0)*n_q_points_1d*n_q_points_1d;
+  const unsigned int  idx = (dim==1 ? threadIdx.x%n_q_points_1d :
+                            dim==2 ? threadIdx.x + n_q_points_1d*(threadIdx.y%n_q_points_1d) :
+                            threadIdx.x + n_q_points_1d*(threadIdx.y + n_q_points_1d*(threadIdx.z%n_q_points_1d)));
 
   const unsigned int srcidx = loc2glob[idx];
   values[idx] = __ldg(&src[srcidx]);
@@ -294,18 +299,18 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::distribute_local_to_globa
 
   if(use_coloring) {
 
-    const unsigned int  i = (threadIdx.x)
-      +(dim>1 ? threadIdx.y : 0)*n_q_points_1d
-      +(dim>2 ? (threadIdx.z%n_q_points_1d) : 0)*n_q_points_1d*n_q_points_1d;
+    const unsigned int  i = (dim==1 ? threadIdx.x%n_q_points_1d :
+                             dim==2 ? threadIdx.x + n_q_points_1d*(threadIdx.y%n_q_points_1d) :
+                             threadIdx.x + n_q_points_1d*(threadIdx.y + n_q_points_1d*(threadIdx.z%n_q_points_1d)));
     {
       const unsigned int dstidx = loc2glob[i];
       dst[dstidx] += values[i];
     }
   }
   else {
-    const unsigned int  i = (threadIdx.x)
-      +(dim>1 ? threadIdx.y : 0)*n_q_points_1d
-      +(dim>2 ? (threadIdx.z%n_q_points_1d) : 0)*n_q_points_1d*n_q_points_1d;
+    const unsigned int  i = (dim==1 ? threadIdx.x%n_q_points_1d :
+                             dim==2 ? threadIdx.x + n_q_points_1d*(threadIdx.y%n_q_points_1d) :
+                             threadIdx.x + n_q_points_1d*(threadIdx.y + n_q_points_1d*(threadIdx.z%n_q_points_1d)));
     {
       const unsigned int dstidx = loc2glob[i];
 
