@@ -22,6 +22,8 @@
 #include "cuda_utils.cuh"
 
 
+#define ROWLENGTH 128
+
 //=============================================================================
 // This implements a class for matrix-free computations on the GPU. It
 // essentially consists of the following functions:
@@ -138,6 +140,9 @@ private:
   unsigned int cells_per_block;
   dim3 constr_grid_dim;
   dim3 constr_block_dim;
+
+  // for alignment
+  const unsigned int rowlength;
 public:
 
   struct GpuData {
@@ -157,13 +162,18 @@ public:
 
     bool use_coloring;
 
+    unsigned int rowlength;
+
   };
 
 
   MatrixFreeGpu()
     : constrained_dofs(NULL),
-       use_coloring(false)
+      use_coloring(false),
+      rowlength(ROWLENGTH)
   {}
+
+  unsigned int get_rowlength() const { return rowlength; }
 
   void reinit(const Mapping<dim>        &mapping,
               const DoFHandler<dim>     &dof_handler,
@@ -191,6 +201,7 @@ public:
     data.constraint_mask = constraint_mask[color];
     data.n_cells = n_cells[color];
     data.use_coloring = use_coloring;
+    data.rowlength = rowlength;
     return data;
   }
 

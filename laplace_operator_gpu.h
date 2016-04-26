@@ -166,7 +166,7 @@ __global__ void local_coeff_eval (Number                                        
     const GpuArray<dim,Number> *qpts = gpu_data.quadrature_points;
 
     for (unsigned int q=0; q<n_q_points; ++q) {
-      const unsigned int idx = cell*n_q_points + q;
+      const unsigned int idx = cell*gpu_data.rowlength + q;
       coefficient[idx] =  CoefficientT::value(qpts[idx]);
     }
 
@@ -188,7 +188,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>:: evaluate_coefficient ()
     const dim3 grid_dim = dim3(coeff_eval_x_num_blocks,coeff_eval_y_num_blocks);
     const dim3 block_dim = dim3(BKSIZE_COEFF_EVAL);
 
-    coefficient[c].resize (data.n_cells[c] * data.qpts_per_cell);
+    coefficient[c].resize (data.n_cells[c] * data.get_rowlength());
 
     local_coeff_eval<dim,fe_degree,Number, Coefficient<dim> >
       <<<grid_dim,block_dim>>> (coefficient[c].getData(),

@@ -56,6 +56,10 @@ private:
 
   // For setting up hanging node constraints
   // HangingNodes<dim> hanging_nodes;
+
+  // for padding
+  const unsigned int rowlength;
+
 public:
   ReinitHelper(MatrixFreeGpu<dim,Number>                              *data,
                const Mapping<dim>                                     &mapping,
@@ -73,7 +77,8 @@ public:
                  update_values | update_gradients | update_JxW_values),
       lexicographic_inv(shape_info.lexicographic_numbering),
       // hanging_nodes(fe_degree,dof_handler,lexicographic_inv),
-      update_flags(update_flags)
+      update_flags(update_flags),
+      rowlength(data->get_rowlength())
   {
     local_dof_indices.resize(data->dofs_per_cell);
     lexicographic_dof_indices.resize(dofs_per_cell);
@@ -136,16 +141,16 @@ void ReinitHelper<dim,Number>::setup_cell_arrays(const unsigned int c)
   }
 
 
-  loc2glob_host.resize(n_cells*dofs_per_cell);
+  loc2glob_host.resize(n_cells*rowlength);
 
   if(update_flags & update_quadrature_points)
-    quad_points_host.resize(n_cells*qpts_per_cell);
+    quad_points_host.resize(n_cells*rowlength);
 
   if(update_flags & update_JxW_values)
-    JxW_host.resize(n_cells*qpts_per_cell);
+    JxW_host.resize(n_cells*rowlength);
 
   if(update_flags & update_gradients)
-    inv_jac_host.resize(n_cells*qpts_per_cell*dim*dim);
+    inv_jac_host.resize(n_cells*rowlength*dim*dim);
 
   constraint_mask_host.resize(n_cells);
 
@@ -165,24 +170,24 @@ void ReinitHelper<dim,Number>::get_cell_data(const T& cell, const unsigned int c
   //                                  lexicographic_dof_indices,
   //                                  cell,cellid);
 
-  memcpy(&loc2glob_host[cellid*dofs_per_cell],&lexicographic_dof_indices[0],dofs_per_cell*sizeof(unsigned int));
+  memcpy(&loc2glob_host[cellid*rowlength],&lexicographic_dof_indices[0],dofs_per_cell*sizeof(unsigned int));
 
   fe_values.reinit(cell);
 
   // quadrature points
   if(update_flags & update_quadrature_points) {
     const std::vector<Point<dim> > & qpts = fe_values.get_quadrature_points();
-    memcpy(&quad_points_host[cellid*qpts_per_cell],&qpts[0],qpts_per_cell*sizeof(Point<dim>));
+    memcpy(&quad_points_host[cellid*rowlength],&qpts[0],qpts_per_cell*sizeof(Point<dim>));
   }
 
   if(update_flags & update_JxW_values) {
     const std::vector<Number > & jxws = fe_values.get_JxW_values();
-    memcpy(&JxW_host[cellid*qpts_per_cell],&jxws[0],qpts_per_cell*sizeof(Number));
+    memcpy(&JxW_host[cellid*rowlength],&jxws[0],qpts_per_cell*sizeof(Number));
   }
 
   if(update_flags & update_gradients) {
     const std::vector<DerivativeForm<1,dim,dim> >& jacs = fe_values.get_inverse_jacobians();
-    memcpy(&inv_jac_host[cellid*qpts_per_cell*dim*dim],&jacs[0],qpts_per_cell*sizeof(DerivativeForm<1,dim,dim>));
+    memcpy(&inv_jac_host[cellid*rowlength*dim*dim],&jacs[0],qpts_per_cell*sizeof(DerivativeForm<1,dim,dim>));
   }
 }
 
@@ -228,30 +233,30 @@ void ReinitHelper<dim,Number>::alloc_and_copy_arrays(const unsigned int c)
 
   // local-to-global mapping
   if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
-    transpose_inplace(loc2glob_host,n_cells, dofs_per_cell);
+    transpose_inplace(loc2glob_host,n_cells, rowlength);
   }
   alloc_and_copy(&data->loc2glob[c],
                  loc2glob_host,
-                 n_cells*dofs_per_cell);
+                 n_cells*rowlength);
 
   // quadrature points
   if(update_flags & update_quadrature_points) {
     if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
-      transpose_inplace(quad_points_host,n_cells, qpts_per_cell);
+      transpose_inplace(quad_points_host,n_cells, rowlength);
     }
     alloc_and_copy(&data->quadrature_points[c],
                    quad_points_host,
-                   n_cells*qpts_per_cell);
+                   n_cells*rowlength);
   }
 
   // jacobian determinants/quadrature weights
   if(update_flags & update_JxW_values) {
     if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
-      transpose_inplace(JxW_host,n_cells, qpts_per_cell);
+      transpose_inplace(JxW_host,n_cells, rowlength);
     }
     alloc_and_copy(&data->JxW[c],
                    JxW_host,
-                   n_cells*qpts_per_cell);
+                   n_cells*rowlength);
   }
   // inverse jacobians
   if(update_flags & update_gradients) {
@@ -263,17 +268,17 @@ void ReinitHelper<dim,Number>::alloc_and_copy_arrays(const unsigned int c)
     // i.e. this index order: i*qpts_per_cell*n_cells + cellid*qpts_per_cell + q
     // this is good for a dof-level parallelization
 
-    transpose_inplace(inv_jac_host,qpts_per_cell*n_cells,dim*dim);
+    transpose_inplace(inv_jac_host,rowlength*n_cells,dim*dim);
 
     // transpose second time means we get the following index order:
     // q*n_cells*dim*dim + i*n_cells + cellid
     // which is good for an element-level parallelization
 
     if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
-      transpose_inplace(inv_jac_host,n_cells*dim*dim, qpts_per_cell);
+      transpose_inplace(inv_jac_host,n_cells*dim*dim, rowlength);
     }
     alloc_and_copy(&data->inv_jac[c], inv_jac_host,
-                   n_cells*dim*dim*qpts_per_cell);
+                   n_cells*dim*dim*rowlength);
   }
 
   alloc_and_copy(&data->constraint_mask[c],constraint_mask_host,n_cells);
