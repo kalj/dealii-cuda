@@ -544,39 +544,76 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
   evaluation_data.resize(3*n_child_cell_dofs);
 }
 
-template <int dim, int dir, int n_fine, n_coarse, typename Number>
+enum prol_restr {
+  PROLONGATION, RESTRICTION;
+};
+
+template <int dim, prol_restr red_type, int dir, int n_fine, n_coarse, typename Number>
 __device__ void reduce(Number * buf)
 {
-  // multiplicity of output
+  // multiplicity of large and small size
+  const bool prol = red_type==PROLONGATION;
   const unsigned int M = 1+(n_fine-1)/n_coarse;
-  Number tmp[dir==0?M:
-             dir==1?M*M:
-             M*M*M];
+  const unsigned int n_src = prol ? n_coarse : n_fine;
 
-  for(int m1=0; m1<M; ++m1) {
-    for(int m2=0; m2<(dir>0?M:1); ++m2) {
-      for(int m3=0; m3<(dir>1?M:1); ++m3) {
+  // in direction of reduction (dir and threadIdx.x respectively), always read
+  // from 1 location, and write to M (typically 2). in other directions, either
+  // read M or 1 and write same number.
+  const unsigned int M1 = prol?M:1;
+  const unsigned int M2 = prol?(dir>0?M:1):(dir<2?M:1);
+  const unsigned int M3 = prol?(dir>1?M:1):(dir<1?M:1);
 
-        tmp[m1+m2*M+m3*M*M] = 0;
+  const bool last_thread_x = threadIdx.x==(n_coarse-1);
+  const bool last_thread_y = threadIdx.y==(n_coarse-1);
+  const bool last_thread_z = threadIdx.z==(n_coarse-1);
+
+  Number tmp[M1*M2*M3];
+
+#pragma unroll
+  for(int m3=0; m3<M3; ++m3) {
+#pragma unroll
+    for(int m2=0; m2<M2 ; ++m2) {
+#pragma unroll
+      for(int m1=0; m1<M1; ++m1) {
+
+        tmp[m1+M1*(m2 + M2*m3)] = 0;
 
         for(int i=0; i<n_src; ++i) {
-          const unsigned int idx = dir==0 ? i+threadIdx.y*n_fine+threadIdx.z*n_fine*n_fine
-            : dir==1 ?            threadIdx.y+          i*n_fine+threadIdx.z*n_fine*n_fine
-            :                     threadIdx.y+threadIdx.z*n_fine+          i*n_fine*n_fine;
-
-          tmp[m1+m2*M+m3*M*M] += myphi[i+]*buf[idx];
+          const unsigned int x=i;
+          const unsigned int y=m2+M2*threadIdx.y;
+          const unsigned int z=m3+M3*threadIdx.z;
+          const unsigned int idx = (dir==0 ? x +n_fine*(y + n_fine*z)
+                                  : dir==1 ? y + n_fine*(x + n_fine*z)
+                                  :         y +n_fine*(z + n_fine*x));
+          // unless we are the last thread in a direction AND we are updating
+          // any value after the first one, go ahead
+          if(((m1==0) || !last_thread_x) &&
+             ((m2==0) || !last_thread_y) &&
+             ((m3==0) || !last_thread_z))
+            tmp[m1+M1*(m2 + M2*m3)] += myphi[m1*n_src+i]*buf[idx];
+        }
+      }
     }
   }
   __syncthreads();
 
-  for(int m1=0; m1<M; ++m1) {
-    for(int m2=0; m2<(dir>0?M:1); ++m2) {
-      for(int m3=0; m3<(dir>1?M:1); ++m3) {
-        const unsigned int idx = dir==0 ? (m+multiplicity*threadIdx.x)                 +threadIdx.y*n_fine                 +threadIdx.z*n_fine*n_fine
-          : dir==1 ?                                       threadIdx.y+(m+multiplicity*threadIdx.x)*n_fine                 +threadIdx.z*n_fine*n_fine
-          :                                                threadIdx.y                 +threadIdx.z*n_fine+(m+multiplicity*threadIdx.x)*n_fine*n_fine;
+#pragma unroll
+  for(int m3=0; m3<M3; ++m3) {
+#pragma unroll
+    for(int m2=0; m2<M2; ++m2) {
+#pragma unroll
+      for(int m1=0; m1<M1; ++m1) {
+        const unsigned int x=m1+M1*threadIdx.x;
+        const unsigned int y=m2+M2*threadIdx.y;
+        const unsigned int z=m3+M3*threadIdx.z;
+        const unsigned int idx = (dir==0 ? x +n_fine*(y + n_fine*z)
+                                  : dir==1 ? y + n_fine*(x + n_fine*z)
+                                  :         y +n_fine*(z + n_fine*x));
 
-        buf[idx] = tmp[m1+m2*M+m3*M*M];
+        if(((m1==0) || !last_thread_x) &&
+           ((m2==0) || !last_thread_y) &&
+           ((m3==0) || !last_thread_z))
+          buf[idx] = tmp[m1 + M1*(m2 + M2*m3)];
       }
     }
   }
@@ -604,10 +641,10 @@ __global__ void prolongate(Number *dst, const Number *src)
   reduce<dim,2,n_dofs_1d_fine,n_dofs_1d_coarse>(buf);
 
 
-  for(int i=0; i<2; ++i)
-    for(int j=0; j<2; ++j)
-      for(int k=0; k<2; ++k) {
-        const unsigned int dstidx = (threadIdx.x+k) + n_dofs_1d_fine*((threadIdx.y+j) + n_dofs_1d_fine*(threadIdx.z+i));
+  for(int m3=0; m3<2; ++m3)
+    for(int m2=0; m2<2; ++m2)
+      for(int m1=0; m1<2; ++m1) {
+        const unsigned int dstidx = (threadIdx.x+m1) + n_dofs_1d_fine*((threadIdx.y+m2) + n_dofs_1d_fine*(threadIdx.z+m3));
         buf[dstidx] = src[loc2glob_fine[cell*n_dofs_fine+tid]];
       }
 }
