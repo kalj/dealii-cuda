@@ -109,6 +109,7 @@ private:
   Number             *values;
   Number             *gradients[dim];
 
+  const unsigned int rowlength;
 public:
   const GpuArray<dim,Number> *quadrature_points;
 
@@ -148,7 +149,8 @@ public:
     const unsigned int q = (dim==1 ? threadIdx.x%n_dofs_1d :
                             dim==2 ? threadIdx.x + n_dofs_1d*(threadIdx.y%n_dofs_1d) :
                             threadIdx.x + n_dofs_1d*(threadIdx.y + n_dofs_1d*(threadIdx.z%n_dofs_1d)));
-    lop->quad_operation(this,q,cellid*n_q_points+q);
+    lop->quad_operation(this,q,cellid*rowlength+q);
+    __syncthreads();
   }
 
 };
@@ -158,13 +160,14 @@ __device__ FEEvaluationGpu<Number,dim,fe_degree>::FEEvaluationGpu(int cellid,
                                                                   const data_type *data,
                                                                   SharedData<dim,Number> *shdata)
   :
-  FEEvaluationGpuBase<Number,dim,fe_degree>(cellid,data)
+  FEEvaluationGpuBase<Number,dim,fe_degree>(cellid,data),
+  rowlength(data->rowlength)
 {
   values = shdata->values;
-  loc2glob = data->loc2glob+n_local_dofs*cellid;
-  inv_jac = data->inv_jac+n_q_points*cellid;
-  JxW = data->JxW+n_q_points*cellid;
-  quadrature_points = data->quadrature_points+n_q_points*cellid;
+  loc2glob = data->loc2glob+rowlength*cellid;
+  inv_jac = data->inv_jac+rowlength*cellid;
+  JxW = data->JxW+rowlength*cellid;
+  quadrature_points = data->quadrature_points+rowlength*cellid;
 
   for(int d = 0; d < dim; ++d) {
     gradients[d] = shdata->gradients[d];
@@ -208,7 +211,7 @@ FEEvaluationGpu<Number,dim,fe_degree>::get_gradient(const unsigned int q) const
 #else
     Number tmp = 0;
     for(int d2=0; d2<dim; d2++) {
-      tmp += J[n_q_points*n_cells*(dim*d2+d1)] * gradients[d2][q];
+      tmp += J[rowlength*n_cells*(dim*d2+d1)] * gradients[d2][q];
     }
     grad[d1] = tmp;
 #endif
@@ -239,7 +242,7 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::submit_gradient(const gra
 #else
     Number tmp = 0;
     for(int d2=0; d2<dim; d2++) {
-      tmp += J[n_cells*n_q_points*(dim*d1+d2)]*grad[d2];
+      tmp += J[n_cells*rowlength*(dim*d1+d2)]*grad[d2];
     }
     gradients[d1][q] = tmp * jxw;
 #endif
@@ -283,6 +286,8 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Num
 
   // if(constraint_mask)
   //   resolve_hanging_nodes_shmem<dim,fe_degree,NOTRANSPOSE>(values,constraint_mask);
+
+  __syncthreads();
 }
 
 
