@@ -148,6 +148,7 @@ public:
   __device__ void apply_quad_point_operations(const LocOp *lop) {
     const unsigned int q = (threadIdx.x%n_dofs_1d)+n_dofs_1d*threadIdx.y+(dim==3 ?(n_dofs_1d*n_dofs_1d*threadIdx.z) : 0);
     lop->quad_operation(this,q,cellid*rowlength+q);
+    __syncthreads();
   }
 
 };
@@ -184,6 +185,7 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::evaluate(const bool evalu
     if(evaluate_grad) __syncthreads();
     TensorOpsShmem<dim,fe_degree+1,Number>::fun_at_quad_pts (values);
   }
+  __syncthreads();
 }
 
 template <typename Number, int dim, int fe_degree>
@@ -262,6 +264,7 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::integrate(const bool inte
   }
   else if(integrate_grad)
     TensorOpsShmem<dim,fe_degree+1,Number>::quad_int_grad<false> (values,gradients);
+  __syncthreads();
 }
 
 //=============================================================================
@@ -280,6 +283,8 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Num
 
   // if(constraint_mask)
   //   resolve_hanging_nodes_shmem<dim,fe_degree,NOTRANSPOSE>(values,constraint_mask);
+
+  __syncthreads();
 }
 
 
