@@ -250,11 +250,11 @@ struct LocalOperator {
   }
 
   // what to do fore each cell
-  __device__ void apply (Number                          *dst,
-                          const Number                    *src,
-                          const typename MatrixFreeGpu<dim,Number>::GpuData *gpu_data,
-                          const unsigned int cell,
-                          SharedData<dim,Number> *shdata) const
+  __device__ void cell_apply (Number                          *dst,
+                              const Number                    *src,
+                              const typename MatrixFreeGpu<dim,Number>::GpuData *gpu_data,
+                              const unsigned int cell,
+                              SharedData<dim,Number> *shdata) const
   {
     FEEvaluationGpu<Number,dim,fe_degree> phi (cell, gpu_data, shdata);
 

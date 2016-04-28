@@ -262,7 +262,7 @@ __global__ void apply_kernel_shmem (Number                          *dst,
   SharedData<dim,Number> shdata(&values[local_cell*LocOp::n_local_dofs],gq);
 
   if(cell < gpu_data.n_cells) {
-    loc_op.apply(dst,src,&gpu_data,cell,&shdata);
+    loc_op.apply_cell(dst,src,&gpu_data,cell,&shdata);
   }
 }
 
