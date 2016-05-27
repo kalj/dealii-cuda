@@ -150,16 +150,16 @@ MGTransferMatrixFreeGpu<dim,Number>::MGTransferMatrixFreeGpu ()
 
 
 
-// template<int dim, typename Number>
-// MGTransferMatrixFreeGpu<dim,Number>::MGTransferMatrixFreeGpu (const MGConstrainedDoFs &mg_c)
-//   :
-//   fe_degree(0),
-//   element_is_continuous(false),
-//   n_components(0),
-//   n_child_cell_dofs(0)
-// {
-//   this->mg_constrained_dofs = &mg_c;
-// }
+template<int dim, typename Number>
+MGTransferMatrixFreeGpu<dim,Number>::MGTransferMatrixFreeGpu (const MGConstrainedDoFs &mg_c)
+  :
+  fe_degree(0),
+  element_is_continuous(false),
+  n_components(0),
+  n_child_cell_dofs(0)
+{
+  this->mg_constrained_dofs = &mg_c;
+}
 
 
 
@@ -1042,7 +1042,7 @@ void MGTransferMatrixFreeGpu<dim,Number>
   else
   */
   if (fe_degree == 1)
-    this->template coarse_cell_loop<MGProlongateBody,1>(to_level, dst, src);
+    coarse_cell_loop<MGProlongateBody,1>(to_level, dst, src);
   else if (fe_degree == 2)
     coarse_cell_loop<MGProlongateBody,2>(to_level, dst, src);
   else if (fe_degree == 3)
