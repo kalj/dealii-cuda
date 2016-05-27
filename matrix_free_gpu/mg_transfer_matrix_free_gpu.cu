@@ -269,7 +269,6 @@ namespace
                              unsigned int &n_components,
                              unsigned int &fe_degree,
                              bool &element_is_continuous,
-                             // unsigned int &n_child_dofs_1d ,
                              unsigned int &n_child_cell_dofs,
                              /*
                                DoF indices
@@ -552,7 +551,7 @@ namespace
 
     for (unsigned int level = 1; level<n_levels; ++level)
     {
-      level_vector.resize(n_owned_level_cells[level],0);
+      level_vector.resize(n_child_cell_dofs*n_owned_level_cells[level-1],0.0);
 
       for (unsigned int c=0; c<n_owned_level_cells[level-1]; ++c)
         for (unsigned int j=0; j<n_child_cell_dofs; ++j)
@@ -650,16 +649,20 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
   shape_values.resize(size_shape_values);
   shape_values.fromHost(&shape_info.shape_values_number[0],size_shape_values);
 
+
   level_dof_indices.resize(n_levels);
-  weights_on_refined.resize(n_levels);
-  child_offset_in_parent.resize(n_levels);
+  for(int l=0; l<n_levels; l++) level_dof_indices[l]=level_dof_indices_host[l];
+
+
+  // FIXME: adjust for extra entry in host array? (+1)
+  weights_on_refined.resize(n_levels-1);
+  for(int l=0; l<n_levels-1; l++) weights_on_refined[l] = weights_host[l+1];
+
+
+  child_offset_in_parent.resize(n_levels-1);
   std::vector<unsigned int> offsets;
 
-  for(int l=0; l<n_levels; l++) {
-
-    level_dof_indices[l]=level_dof_indices_host[l];
-
-    weights_on_refined[l] = weights_host[l];
+  for(int l=0; l<n_levels-1; l++) {
 
     offsets.resize(n_owned_level_cells[l]);
 
@@ -968,14 +971,14 @@ __global__ void mg_kernel (Number *dst, const Number *src, const Number *weights
 template <int dim, typename Number>
 template <template <int,int,typename> class loop_body, int degree>
 void MGTransferMatrixFreeGpu<dim,Number>
-::coarse_cell_loop  (const unsigned int      coarse_level,
+::coarse_cell_loop  (const unsigned int      fine_level,
                      GpuVector<Number>       &dst,
                      const GpuVector<Number> &src) const
 {
   // const unsigned int n_fine_dofs_1d = 2*degree+1;
   const unsigned int n_coarse_dofs_1d = degree+1;
 
-  const unsigned int n_coarse_cells = n_owned_level_cells[coarse_level-1]; // WHY MINUS ONE ?
+  const unsigned int n_coarse_cells = n_owned_level_cells[fine_level-1];
 
   // kernel parameters
   dim3 bk_dim(n_coarse_dofs_1d,
@@ -987,11 +990,11 @@ void MGTransferMatrixFreeGpu<dim,Number>
   mg_kernel<dim, degree, loop_body<dim,degree,Number> >
     <<<gd_dim,bk_dim>>> (dst.getData(),
                          src.getDataRO(),
-                         weights_on_refined[coarse_level].getDataRO(),
+                         weights_on_refined[fine_level-1].getDataRO(), // only has fine-level entries
                          shape_values.getDataRO(),
-                         level_dof_indices[coarse_level-1].getDataRO(), // why offset by one???
-                         level_dof_indices[coarse_level].getDataRO(),
-                         child_offset_in_parent[coarse_level-1].getDataRO(),
+                         level_dof_indices[fine_level-1].getDataRO(),
+                         level_dof_indices[fine_level].getDataRO(),
+                         child_offset_in_parent[fine_level-1].getDataRO(), // on coarse level
                          n_child_cell_dofs);
 
 
