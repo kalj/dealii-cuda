@@ -246,7 +246,8 @@ private:
    * all levels (outer index), the cells within the levels (second index), and
    * the indices on the cell (inner index).
    */
-  std::vector<std::vector<std::vector<unsigned short> > > dirichlet_indices;
+  // std::vector<std::vector<std::vector<unsigned short> > > dirichlet_indices;
+  std::vector<internal::GpuList<unsigned int> > dirichlet_indices;
 
   /**
    * Performs templated prolongation operation
@@ -268,6 +269,8 @@ private:
   void coarse_cell_loop  (const unsigned int      coarse_level,
                           GpuVector<Number>       &dst,
                           const GpuVector<Number> &src) const;
+
+  void set_constrained_dofs(GpuVector<Number>& vec, unsigned int level, Number val) const;
 
   SmartPointer< const MGConstrainedDoFs, MGTransferMatrixFreeGpu<dim,Number> > 	mg_constrained_dofs;
 

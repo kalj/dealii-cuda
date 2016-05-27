@@ -277,10 +277,10 @@ namespace
                              std::vector<std::vector<unsigned int>> &level_dof_indices,
                              std::vector<std::vector<std::pair<unsigned int,unsigned int> > > &parent_child_connect,
                              std::vector<unsigned int> &n_owned_level_cells,
-                             std::vector<std::vector<std::vector<unsigned short> > > &dirichlet_indices,
+                             // std::vector<std::vector<std::vector<unsigned short> > > &dirichlet_indices,
                              const Triangulation<dim> &tria,
                              const DoFHandler<dim> &mg_dof,
-                             SmartPointer< const MGConstrainedDoFs, MGTransferMatrixFreeGpu<dim,Number> > 	mg_constrained_dofs,
+                             // SmartPointer< const MGConstrainedDoFs, MGTransferMatrixFreeGpu<dim,Number> > 	mg_constrained_dofs,
 
                              /*
                                Weights
@@ -372,7 +372,7 @@ namespace
       coarse_level_indices[level].resize(tria.n_raw_cells(level),
                                          numbers::invalid_unsigned_int);
     std::vector<types::global_dof_index> local_dof_indices(mg_dof.get_fe().dofs_per_cell);
-    dirichlet_indices.resize(n_levels-1);
+    // dirichlet_indices.resize(n_levels-1);
 
     // We use the vectors stored ghosted_level_vector in the base class for
     // keeping ghosted transfer indices. To avoid keeping two very similar
@@ -448,10 +448,10 @@ namespace
 
             // set Dirichlet boundary conditions (as a list of
             // constrained DoFs) for the child
-            if (mg_constrained_dofs != 0)
-              for (unsigned int i=0; i<mg_dof.get_fe().dofs_per_cell; ++i)
-                if (mg_constrained_dofs->is_boundary_index(level,local_dof_indices[shape_info.lexicographic_numbering[i]]))
-                  dirichlet_indices[level][child_index].push_back(i);
+            // if (mg_constrained_dofs != 0)
+              // for (unsigned int i=0; i<mg_dof.get_fe().dofs_per_cell; ++i)
+                // if (mg_constrained_dofs->is_boundary_index(level,local_dof_indices[shape_info.lexicographic_numbering[i]]))
+                  // dirichlet_indices[level][child_index].push_back(i);
           }
         }
         // if (!cell_is_remote)
@@ -482,11 +482,11 @@ namespace
                                  local_dof_indices,
                                  &global_level_dof_indices_l0[start_index]);
 
-          dirichlet_indices[0].push_back(std::vector<unsigned short>());
-          if (mg_constrained_dofs != 0)
-            for (unsigned int i=0; i<mg_dof.get_fe().dofs_per_cell; ++i)
-              if (mg_constrained_dofs->is_boundary_index(0,local_dof_indices[shape_info.lexicographic_numbering[i]]))
-                dirichlet_indices[0].back().push_back(i);
+          // dirichlet_indices[0].push_back(std::vector<unsigned short>());
+          // if (mg_constrained_dofs != 0)
+          //   for (unsigned int i=0; i<mg_dof.get_fe().dofs_per_cell; ++i)
+          //     if (mg_constrained_dofs->is_boundary_index(0,local_dof_indices[shape_info.lexicographic_numbering[i]]))
+          //       dirichlet_indices[0].back().push_back(i);
         }
       }
 
@@ -495,7 +495,7 @@ namespace
       // level
       AssertDimension(counter*n_child_cell_dofs, global_level_dof_indices.size());
       n_owned_level_cells[level-1] = counter;
-      dirichlet_indices[level-1].resize(counter);
+      // dirichlet_indices[level-1].resize(counter);
       parent_child_connect[level-1].
         resize(counter, std::make_pair(numbers::invalid_unsigned_int,
                                        numbers::invalid_unsigned_int));
@@ -601,6 +601,8 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
 
   const unsigned int n_levels = tria.n_global_levels();
 
+  printf("n_levels: %d\n",n_levels);
+
   // we collect all child DoFs of a mother cell together. For faster
   // tensorized operations, we align the degrees of freedom
   // lexicographically. We distinguish FE_Q elements and FE_DGQ elements
@@ -623,10 +625,10 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
                               level_dof_indices_host, // write
                               parent_child_connect,   // write
                               n_owned_level_cells,    // write
-                              dirichlet_indices,      // write
+                              // dirichlet_indices,      // write
                               tria,                   // read ..
                               mg_dof,                 // read
-                              mg_constrained_dofs,
+                              // mg_constrained_dofs,
 
                               /*
                                 Weights
@@ -674,6 +676,22 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
 
     child_offset_in_parent[l] = offsets;
   }
+
+
+  std::vector<types::global_dof_index> dirichlet_index_vector;
+
+  dirichlet_indices.resize(n_levels); // ?
+
+  for(int l=0; l<n_levels; l++) {
+
+    if(mg_constrained_dofs != NULL) {
+      mg_constrained_dofs->get_boundary_indices(l).fill_index_vector(dirichlet_index_vector);
+
+      dirichlet_indices[l] = dirichlet_index_vector;
+    }
+
+  }
+
 }
 
 
@@ -1046,6 +1064,11 @@ void MGTransferMatrixFreeGpu<dim,Number>
   else
     AssertThrow(false, ExcNotImplemented("Only degrees 0 up to 10 implemented."));
 
+
+  // now set constrained dofs to 0
+
+  set_constrained_dofs(dst,to_level,0);
+
   // this->ghosted_level_vector[to_level].compress(VectorOperation::add);
   // dst = this->ghosted_level_vector[to_level];
 }
@@ -1100,9 +1123,37 @@ void MGTransferMatrixFreeGpu<dim,Number>
 
   // this->ghosted_level_vector[from_level-1].compress(VectorOperation::add);
   // dst += this->ghosted_level_vector[from_level-1];
+
+  set_constrained_dofs(dst,from_level-1,0);
+
 }
 
+template <typename Number>
+__global__ void set_constrained_dofs_kernel(Number *vec, const unsigned int *indices,
+                                            unsigned int len, Number val)
+{
+  const unsigned int idx = threadIdx.x + blockIdx.x*blockDim.x;
+  if(idx < len) {
+    vec[indices[idx]] = val;
+  }
+}
 
+template <int dim, typename Number>
+void MGTransferMatrixFreeGpu<dim,Number>::set_constrained_dofs(GpuVector<Number>& vec,
+                                                               unsigned int level,
+                                                               Number val) const
+{
+  const unsigned int bksize = 256;
+  const unsigned int len = dirichlet_indices[level].size();
+  const unsigned int nblocks = (len-1)/bksize + 1;
+  dim3 bk_dim(bksize);
+  dim3 gd_dim(nblocks);
+
+  set_constrained_dofs_kernel<<<gd_dim,bk_dim>>>(vec.getData(),
+                                                 dirichlet_indices[level].getDataRO(),
+                                                 len,val);
+  cudaAssertNoError();
+}
 
 
 template <int dim, typename Number>
