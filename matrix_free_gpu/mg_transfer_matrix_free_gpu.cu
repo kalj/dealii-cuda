@@ -289,12 +289,10 @@ namespace
                              const unsigned int                 n_levels)
   {
 
-    const FiniteElement<dim> &mg_fe = mg_dof.get_fe();
-
     // step 1.1: create a 1D copy of the finite element from FETools where we
     // substitute the template argument
-    AssertDimension(mg_fe.n_base_elements(), 1);
-    std::string fe_name = mg_fe.base_element(0).get_name();
+    AssertDimension(mg_dof.get_fe().n_base_elements(), 1);
+    std::string fe_name = mg_dof.get_fe().base_element(0).get_name();
     {
       const std::size_t template_starts = fe_name.find_first_of('<');
       Assert (fe_name[template_starts+1] == (dim==1?'1':(dim==2?'2':'3')),
@@ -307,61 +305,62 @@ namespace
     unsigned int n_child_dofs_1d = numbers::invalid_unsigned_int;
 
 
-
-    // currently, we have only FE_Q and FE_DGQ type elements implemented
-    n_components = mg_fe.element_multiplicity(0);
-    AssertDimension(Utilities::fixed_power<dim>(fe.dofs_per_cell)*n_components,
-                    mg_fe.dofs_per_cell);
-    AssertDimension(fe.degree, mg_fe.degree);
-    fe_degree = fe.degree;
-    element_is_continuous = fe.dofs_per_vertex > 0;
-    Assert(fe.dofs_per_vertex < 2, ExcNotImplemented());
-
-    // step 1.2: get renumbering of 1D basis functions to lexicographic
-    // numbers. The distinction according to fe.dofs_per_vertex is to support
-    // both continuous and discontinuous bases.
-    std::vector<unsigned int> renumbering(fe.dofs_per_cell);
     {
-      AssertIndexRange(fe.dofs_per_vertex, 2);
-      renumbering[0] = 0;
-      for (unsigned int i=0; i<fe.dofs_per_line; ++i)
-        renumbering[i+fe.dofs_per_vertex] =
-          GeometryInfo<1>::vertices_per_cell*fe.dofs_per_vertex + i;
-      if (fe.dofs_per_vertex > 0)
-        renumbering[fe.dofs_per_cell-fe.dofs_per_vertex] = fe.dofs_per_vertex;
+      // currently, we have only FE_Q and FE_DGQ type elements implemented
+      n_components = mg_dof.get_fe().element_multiplicity(0);
+      AssertDimension(Utilities::fixed_power<dim>(fe.dofs_per_cell)*n_components,
+                      mg_dof.get_fe().dofs_per_cell);
+      AssertDimension(fe.degree, mg_dof.get_fe().degree);
+      fe_degree = fe.degree;
+      element_is_continuous = fe.dofs_per_vertex > 0;
+      Assert(fe.dofs_per_vertex < 2, ExcNotImplemented());
+
+      // step 1.2: get renumbering of 1D basis functions to lexicographic
+      // numbers. The distinction according to fe.dofs_per_vertex is to support
+      // both continuous and discontinuous bases.
+      std::vector<unsigned int> renumbering(fe.dofs_per_cell);
+      {
+        AssertIndexRange(fe.dofs_per_vertex, 2);
+        renumbering[0] = 0;
+        for (unsigned int i=0; i<fe.dofs_per_line; ++i)
+          renumbering[i+fe.dofs_per_vertex] =
+            GeometryInfo<1>::vertices_per_cell*fe.dofs_per_vertex + i;
+        if (fe.dofs_per_vertex > 0)
+          renumbering[fe.dofs_per_cell-fe.dofs_per_vertex] = fe.dofs_per_vertex;
+      }
+
+      // step 1.3: create a 1D quadrature formula from the finite element that
+      // collects the support points of the basis functions on the two children.
+      std::vector<Point<1> > basic_support_points = fe.get_unit_support_points();
+      Assert(fe.dofs_per_vertex == 0 || fe.dofs_per_vertex == 1,
+             ExcNotImplemented());
+      std::vector<Point<1> > points_refined(fe.dofs_per_vertex > 0 ?
+                                            (2 * fe.dofs_per_cell - 1) :
+                                            (2 * fe.dofs_per_cell));
+      const unsigned int shift = fe.dofs_per_cell - fe.dofs_per_vertex;
+      for (unsigned int c=0; c<GeometryInfo<1>::max_children_per_cell; ++c)
+        for (unsigned int j=0; j<basic_support_points.size(); ++j)
+          points_refined[shift*c+j][0] =
+            c*0.5 + 0.5 * basic_support_points[renumbering[j]][0];
+
+      n_child_dofs_1d = points_refined.size();
+      n_child_cell_dofs = n_components*Utilities::fixed_power<dim>(n_child_dofs_1d);
+
+      // step 1.4: evaluate the polynomials and store the data in ShapeInfo
+      const Quadrature<1> quadrature(points_refined);
+      shape_info.reinit(quadrature, mg_dof.get_fe(), 0);
+
+      for (unsigned int c=0; c<GeometryInfo<1>::max_children_per_cell; ++c)
+        for (unsigned int i=0; i<fe.dofs_per_cell; ++i)
+          for (unsigned int j=0; j<fe.dofs_per_cell; ++j)
+            Assert(std::abs(shape_info.shape_values[i*n_child_dofs_1d+j+c*shift][0] -
+                            fe.get_prolongation_matrix(c)(renumbering[j],renumbering[i]))
+                   < std::max(2.*(double)std::numeric_limits<Number>::epsilon(),1e-12),
+                   ExcInternalError());
+
+
     }
-
-    // step 1.3: create a 1D quadrature formula from the finite element that
-    // collects the support points of the basis functions on the two children.
-    std::vector<Point<1> > basic_support_points = fe.get_unit_support_points();
-    Assert(fe.dofs_per_vertex == 0 || fe.dofs_per_vertex == 1,
-           ExcNotImplemented());
-    std::vector<Point<1> > points_refined(fe.dofs_per_vertex > 0 ?
-                                          (2 * fe.dofs_per_cell - 1) :
-                                          (2 * fe.dofs_per_cell));
-    const unsigned int shift = fe.dofs_per_cell - fe.dofs_per_vertex;
-    for (unsigned int c=0; c<GeometryInfo<1>::max_children_per_cell; ++c)
-      for (unsigned int j=0; j<basic_support_points.size(); ++j)
-        points_refined[shift*c+j][0] =
-          c*0.5 + 0.5 * basic_support_points[renumbering[j]][0];
-
-    n_child_dofs_1d = points_refined.size();
-    n_child_cell_dofs = n_components*Utilities::fixed_power<dim>(n_child_dofs_1d);
-
-    // step 1.4: evaluate the polynomials and store the data in ShapeInfo
-    const Quadrature<1> quadrature(points_refined);
-    shape_info.reinit(quadrature, mg_fe, 0);
-
-    for (unsigned int c=0; c<GeometryInfo<1>::max_children_per_cell; ++c)
-      for (unsigned int i=0; i<fe.dofs_per_cell; ++i)
-        for (unsigned int j=0; j<fe.dofs_per_cell; ++j)
-          Assert(std::abs(shape_info.shape_values[i*n_child_dofs_1d+j+c*shift][0] -
-                          fe.get_prolongation_matrix(c)(renumbering[j],renumbering[i]))
-                 < std::max(2.*(double)std::numeric_limits<Number>::epsilon(),1e-12),
-                 ExcInternalError());
-
-
-  // -------------- 2. Extract and match dof indices between child and parent
+    // -------------- 2. Extract and match dof indices between child and parent
 
 
     level_dof_indices.resize(n_levels);
