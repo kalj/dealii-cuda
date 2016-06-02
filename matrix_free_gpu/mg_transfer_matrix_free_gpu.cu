@@ -720,18 +720,18 @@ protected:
   static const unsigned int n_coarse = fe_degree+1;
   static const unsigned int n_fine = fe_degree*2+1;
   static const unsigned int M = 2;
-  Number *buf;
+  Number *values;
   const Number *weights;
   const Number *shape_values;
   const unsigned int *dof_indices_coarse;
   const unsigned int *dof_indices_fine;
 
-  __device__ MGTransferBody(Number *buf, const Number *weights,
-                            const Number *shape_values,
-                            const unsigned int *dof_indices_coarse,
-                            const unsigned int *dof_indices_fine)
-    : buf(buf), weights(weights), shape_values(shape_values),
-      dof_indices_coarse(dof_indices_coarse), dof_indices_fine(dof_indices_fine) {}
+  __device__ MGTransferBody(Number *buf, const Number *w,
+                            const Number *shvals,
+                            const unsigned int *idx_coarse,
+                            const unsigned int *idx_fine)
+    : values(buf), weights(w), shape_values(shvals),
+      dof_indices_coarse(idx_coarse), dof_indices_fine(idx_fine) {}
 
   template <prol_restr red_type, int dir>
   __device__ void reduce(const Number *my_shvals)
@@ -774,7 +774,7 @@ protected:
             if(((m1==0) || !last_thread_x) &&
                ((m2==0) || !last_thread_y) &&
                ((m3==0) || !last_thread_z))
-              tmp[m1+M1*(m2 + M2*m3)] += my_shvals[m1*n_src+i]*buf[idx];
+              tmp[m1+M1*(m2 + M2*m3)] += my_shvals[m1*n_src+i]*values[idx];
           }
         }
       }
@@ -797,7 +797,7 @@ protected:
           if(((m1==0) || !last_thread_x) &&
              ((m2==0) || !last_thread_y) &&
              ((m3==0) || !last_thread_z))
-            buf[idx] = tmp[m1 + M1*(m2 + M2*m3)];
+            values[idx] = tmp[m1 + M1*(m2 + M2*m3)];
         }
       }
     }
@@ -824,7 +824,7 @@ protected:
             ((x>0)+(x==fe_degree)) +3*(((y>0)+(y==fe_degree)) + 3*((z>0)+(z==fe_degree)));
 
           if(x<n_fine && y<n_fine && z<n_fine)
-            buf[idx] *= weights[weight_idx];
+            values[idx] *= weights[weight_idx];
         }
       }
     }
@@ -840,14 +840,14 @@ class MGProlongateBody : public MGTransferBody<dim,fe_degree,Number>
   using MGTransferBody<dim,fe_degree,Number>::n_fine;
   using MGTransferBody<dim,fe_degree,Number>::dof_indices_coarse;
   using MGTransferBody<dim,fe_degree,Number>::dof_indices_fine;
-  using MGTransferBody<dim,fe_degree,Number>::buf;
+  using MGTransferBody<dim,fe_degree,Number>::values;
   using MGTransferBody<dim,fe_degree,Number>::shape_values;
   using MGTransferBody<dim,fe_degree,Number>::weights;
 private:
   __device__ void read_coarse(const Number *vec)
   {
     const unsigned int idx = threadIdx.x + n_fine*(threadIdx.y + n_fine*threadIdx.z);
-    buf[idx] = vec[dof_indices_coarse[idx]];
+    values[idx] = vec[dof_indices_coarse[idx]];
   }
 
   __device__ void write_fine(Number *vec) const
@@ -865,17 +865,17 @@ private:
 
           const unsigned int idx = x + n_fine*(y + n_fine*z);
           if(x<n_fine && y<n_fine && z<n_fine)
-            atomicAddWrapper(&vec[dof_indices_fine[idx]],buf[idx]);
+            atomicAddWrapper(&vec[dof_indices_fine[idx]],values[idx]);
         }
   }
 
 public:
-  __device__ MGProlongateBody(Number *buf, const Number *weights,
-                              const Number *shape_values,
-                              const unsigned int *dof_indices_coarse,
-                              const unsigned int *dof_indices_fine)
-    : MGTransferBody<dim,fe_degree,Number>(buf, weights, shape_values,
-                                           dof_indices_coarse, dof_indices_fine) {}
+  __device__ MGProlongateBody(Number *buf, const Number *w,
+                              const Number *shvals,
+                              const unsigned int *idx_coarse,
+                              const unsigned int *idx_fine)
+    : MGTransferBody<dim,fe_degree,Number>(buf, w, shvals,
+                                           idx_coarse, idx_fine) {}
 
   __device__ void run(Number *dst, const Number *src)
   {
@@ -915,7 +915,7 @@ class MGRestrictBody : public MGTransferBody<dim,fe_degree,Number>
   using MGTransferBody<dim,fe_degree,Number>::n_fine;
   using MGTransferBody<dim,fe_degree,Number>::dof_indices_coarse;
   using MGTransferBody<dim,fe_degree,Number>::dof_indices_fine;
-  using MGTransferBody<dim,fe_degree,Number>::buf;
+  using MGTransferBody<dim,fe_degree,Number>::values;
   using MGTransferBody<dim,fe_degree,Number>::shape_values;
   using MGTransferBody<dim,fe_degree,Number>::weights;
 private:
@@ -934,7 +934,7 @@ private:
 
           const unsigned int idx = x + n_fine*(y + n_fine*z);
           if(x<n_fine && y<n_fine && z<n_fine)
-            buf[idx] = vec[dof_indices_fine[idx]];
+            values[idx] = vec[dof_indices_fine[idx]];
         }
   }
 
@@ -942,18 +942,18 @@ private:
   {
     // const unsigned int coarse_idx = threadIdx.x + n_coarse*(threadIdx.y + n_coarse*threadIdx.z);
     const unsigned int idx = threadIdx.x + n_fine*(threadIdx.y + n_fine*threadIdx.z);
-    atomicAddWrapper(&vec[dof_indices_coarse[idx]],buf[idx]);
+    atomicAddWrapper(&vec[dof_indices_coarse[idx]],values[idx]);
   }
 
 
 public:
 
-  __device__ MGRestrictBody(Number *buf, const Number *weights,
-                            const Number *shape_values,
-                            const unsigned int *dof_indices_coarse,
-                            const unsigned int *dof_indices_fine)
-    : MGTransferBody<dim,fe_degree,Number>(buf, weights, shape_values,
-                                           dof_indices_coarse, dof_indices_fine) {}
+  __device__ MGRestrictBody(Number *buf, const Number *w,
+                            const Number *shvals,
+                            const unsigned int *idx_coarse,
+                            const unsigned int *idx_fine)
+    : MGTransferBody<dim,fe_degree,Number>(buf, w, shvals,
+                                           idx_coarse, idx_fine) {}
 
   __device__ void run(Number *dst, const Number *src)
   {
@@ -991,9 +991,9 @@ __global__ void mg_kernel (Number *dst, const Number *src, const Number *weights
   const unsigned int n_fine = Utilities::fixed_int_power<degree*2+1,dim>::value;
   const unsigned int coarse_cell = blockIdx.x;
   const unsigned int coarse_offset = child_offset_in_parent[coarse_cell];
-  __shared__ Number buf[n_fine];
+  __shared__ Number values[n_fine];
 
-  loop_body body(buf, weights, shape_values, dof_indices_coarse+coarse_offset,
+  loop_body body(values, weights, shape_values, dof_indices_coarse+coarse_offset,
                  dof_indices_fine+coarse_cell*n_child_cell_dofs);
 
   body.run(dst, src);
