@@ -84,8 +84,10 @@ namespace internal {
   {
     if(n != newsize)
     {
-      cudaFree(values);
-      cudaAssertNoError();
+      if(values != NULL) {
+        cudaFree(values);
+        cudaAssertNoError();
+      }
 
       n = newsize;
       cudaMalloc(&values,n*sizeof(T));
@@ -108,9 +110,10 @@ namespace internal {
   template <typename T>
   GpuList<T>& GpuList<T>::operator=(const std::vector<T> &host_arr)
   {
+
     resize(host_arr.size());
 
-    cudaMemcpy(values,&host_arr[0],n*sizeof(T),
+    cudaMemcpy(values,host_arr.data(),n*sizeof(T),
                cudaMemcpyHostToDevice);
     cudaAssertNoError();
 
