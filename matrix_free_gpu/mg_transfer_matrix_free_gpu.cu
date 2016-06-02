@@ -81,7 +81,7 @@ namespace internal {
       cudaFree(values);
 
       n = newsize;
-      cudaMalloc(&values,n);
+      cudaMalloc(&values,n*sizeof(T));
     }
   }
 
@@ -792,8 +792,8 @@ protected:
   __device__ void weigh_values(const Number *weights)
   {
     const unsigned int M1 = M;
-    const unsigned int M2 = (dim>0?M:1);
-    const unsigned int M3 = (dim>1?M:1);
+    const unsigned int M2 = (dim>1?M:1);
+    const unsigned int M3 = (dim>2?M:1);
 
 #pragma unroll
     for(int m3=0; m3<M3; ++m3) {
@@ -839,8 +839,8 @@ private:
   __device__ void write_fine(Number *vec) const
   {
     const unsigned int M1 = M;
-    const unsigned int M2 = (dim>0?M:1);
-    const unsigned int M3 = (dim>1?M:1);
+    const unsigned int M2 = (dim>1?M:1);
+    const unsigned int M3 = (dim>2?M:1);
 
     for(int m3=0; m3<M3; ++m3)
       for(int m2=0; m2<M2; ++m2)
@@ -908,8 +908,8 @@ private:
   __device__ void read_fine(const Number *vec)
   {
     const unsigned int M1 = M;
-    const unsigned int M2 = (dim>0?M:1);
-    const unsigned int M3 = (dim>1?M:1);
+    const unsigned int M2 = (dim>1?M:1);
+    const unsigned int M3 = (dim>2?M:1);
 
     for(int m3=0; m3<M3; ++m3)
       for(int m2=0; m2<M2; ++m2)
