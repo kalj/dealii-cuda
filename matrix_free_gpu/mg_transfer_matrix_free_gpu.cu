@@ -803,7 +803,7 @@ protected:
     }
   }
 
-  __device__ void weigh_values(const Number *weights)
+  __device__ void weigh_values()
   {
     const unsigned int M1 = M;
     const unsigned int M2 = (dim>1?M:1);
@@ -821,7 +821,7 @@ protected:
 
           const unsigned int idx = x + n_fine*(y + n_fine*z);
           const unsigned int weight_idx =
-            ((x>0)+(x==fe_degree)) +3*(((y>0)+(y==fe_degree)) + 3*((z>0)+(z==fe_degree)));
+            ((x>0)+(x==fe_degree*2)) +3*(((y>0)+(y==fe_degree*2)) + 3*((z>0)+(z==fe_degree*2)));
 
           if(x<n_fine && y<n_fine && z<n_fine)
             values[idx] *= weights[weight_idx];
@@ -899,7 +899,7 @@ public:
       }
     }
 
-    weigh_values(weights);
+    this->weigh_values();
     __syncthreads();
 
     write_fine(dst);
@@ -963,7 +963,7 @@ public:
 
     read_fine(src);
     __syncthreads();
-    weigh_values(weights);
+    this->weigh_values();
     __syncthreads();
 
     this->template reduce<RESTRICTION,0>(my_shvals);
@@ -993,7 +993,8 @@ __global__ void mg_kernel (Number *dst, const Number *src, const Number *weights
   const unsigned int coarse_offset = child_offset_in_parent[coarse_cell];
   __shared__ Number values[n_fine];
 
-  loop_body body(values, weights, shape_values, dof_indices_coarse+coarse_offset,
+  loop_body body(values, weights+coarse_cell*n_child_cell_dofs,
+                 shape_values, dof_indices_coarse+coarse_offset,
                  dof_indices_fine+coarse_cell*n_child_cell_dofs);
 
   body.run(dst, src);
