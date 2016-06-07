@@ -563,7 +563,7 @@ namespace
 
     for (unsigned int level = 1; level<n_levels; ++level)
     {
-      level_vector.resize(n_child_cell_dofs*n_owned_level_cells[level-1],0.0);
+      level_vector.assign(n_child_cell_dofs*n_owned_level_cells[level-1],0.0);
 
       for (unsigned int c=0; c<n_owned_level_cells[level-1]; ++c)
         for (unsigned int j=0; j<n_child_cell_dofs; ++j)
