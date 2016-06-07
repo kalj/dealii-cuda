@@ -204,7 +204,6 @@ void MGTransferMatrixFreeGpu<dim,Number>::clear ()
   // parent_child_connect.clear();
   child_offset_in_parent.clear();
   n_owned_level_cells.clear();
-  // evaluation_data.clear();
   weights_on_refined.clear();
 }
 
@@ -648,12 +647,6 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
                                */
                               weights_host, // write
                               n_levels);
-
-
-  // questions:
-  // - hur initialisera variabler?
-  //   beroenden: shape_info -> fe_degree -> n_dofs_1d -> etc...
-  // - vad göra med level_vector_host ? behövs den? -> läs på.
 
 
   //---------------------------------------------------------------------------
