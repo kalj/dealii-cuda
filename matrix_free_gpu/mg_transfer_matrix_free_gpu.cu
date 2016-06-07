@@ -1088,7 +1088,7 @@ void MGTransferMatrixFreeGpu<dim,Number>
 
 template <int dim, typename Number>
 void MGTransferMatrixFreeGpu<dim,Number>
-::restrict_and_add (const unsigned int                           from_level,
+::restrict_and_add (const unsigned int      from_level,
                     GpuVector<Number>       &dst,
                     const GpuVector<Number> &src) const
 {
@@ -1103,39 +1103,43 @@ void MGTransferMatrixFreeGpu<dim,Number>
   // this->ghosted_level_vector[from_level] = src;
   // this->ghosted_level_vector[from_level].update_ghost_values();
   // this->ghosted_level_vector[from_level-1] = 0.;
-  dst = 0;
+
+  GpuVector<Number> increment;
+  increment.reinit(dst,false); // resize to correct size and initialize to 0
 
   /*if (fe_degree == 0)
-    coarse_cell_loop<MGRestrictBody,0>(from_level, dst, src);
+    coarse_cell_loop<MGRestrictBody,0>(from_level, increment, src);
   else
   */
   if (fe_degree == 1)
-    coarse_cell_loop<MGRestrictBody,1>(from_level, dst, src);
+    coarse_cell_loop<MGRestrictBody,1>(from_level, increment, src);
   else if (fe_degree == 2)
-    coarse_cell_loop<MGRestrictBody,2>(from_level, dst, src);
+    coarse_cell_loop<MGRestrictBody,2>(from_level, increment, src);
   else if (fe_degree == 3)
-    coarse_cell_loop<MGRestrictBody,3>(from_level, dst, src);
+    coarse_cell_loop<MGRestrictBody,3>(from_level, increment, src);
   else if (fe_degree == 4)
-    coarse_cell_loop<MGRestrictBody,4>(from_level, dst, src);
+    coarse_cell_loop<MGRestrictBody,4>(from_level, increment, src);
   // else if (fe_degree == 5)
-    // coarse_cell_loop<MGRestrictBody,5>(from_level, dst, src);
+    // coarse_cell_loop<MGRestrictBody,5>(from_level, increment, src);
   // else if (fe_degree == 6)
-    // coarse_cell_loop<MGRestrictBody,6>(from_level, dst, src);
+    // coarse_cell_loop<MGRestrictBody,6>(from_level, increment, src);
   // else if (fe_degree == 7)
-    // coarse_cell_loop<MGRestrictBody,7>(from_level, dst, src);
+    // coarse_cell_loop<MGRestrictBody,7>(from_level, increment, src);
   // else if (fe_degree == 8)
-    // coarse_cell_loop<MGRestrictBody,8>(from_level, dst, src);
+    // coarse_cell_loop<MGRestrictBody,8>(from_level, increment, src);
   // else if (fe_degree == 9)
-    // coarse_cell_loop<MGRestrictBody,9>(from_level, dst, src);
+    // coarse_cell_loop<MGRestrictBody,9>(from_level, increment, src);
   // else if (fe_degree == 10)
-    // coarse_cell_loop<MGRestrictBody,10>(from_level, dst, src);
+    // coarse_cell_loop<MGRestrictBody,10>(from_level, increment, src);
   else
     AssertThrow(false, ExcNotImplemented("Only degrees 0 up to 10 implemented."));
 
   // this->ghosted_level_vector[from_level-1].compress(VectorOperation::add);
   // dst += this->ghosted_level_vector[from_level-1];
 
-  set_constrained_dofs(dst,from_level-1,0);
+  set_constrained_dofs(increment,from_level-1,0);
+
+  dst.add(increment);
 
 }
 
