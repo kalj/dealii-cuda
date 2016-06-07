@@ -1045,18 +1045,21 @@ void MGTransferMatrixFreeGpu<dim,Number>
   // this->ghosted_level_vector[to_level] = 0.;
   dst = 0;
 
+  GpuVector<Number> src_with_bc(src);
+  set_constrained_dofs(src_with_bc,to_level-1,0);
+
   /*if (fe_degree == 0)
     coarse_cell_loop<MGProlongateBody,0>(to_level, dst, src);
   else
   */
   if (fe_degree == 1)
-    coarse_cell_loop<MGProlongateBody,1>(to_level, dst, src);
+    coarse_cell_loop<MGProlongateBody,1>(to_level, dst, src_with_bc);
   else if (fe_degree == 2)
-    coarse_cell_loop<MGProlongateBody,2>(to_level, dst, src);
+    coarse_cell_loop<MGProlongateBody,2>(to_level, dst, src_with_bc);
   else if (fe_degree == 3)
-    coarse_cell_loop<MGProlongateBody,3>(to_level, dst, src);
+    coarse_cell_loop<MGProlongateBody,3>(to_level, dst, src_with_bc);
   else if (fe_degree == 4)
-    coarse_cell_loop<MGProlongateBody,4>(to_level, dst, src);
+    coarse_cell_loop<MGProlongateBody,4>(to_level, dst, src_with_bc);
   // else if (fe_degree == 5)
     // coarse_cell_loop<MGProlongateBody,5>(to_level, dst, src);
   // else if (fe_degree == 6)
