@@ -737,8 +737,8 @@ protected:
     // from 1 location, and write to M (typically 2). in other directions, either
     // read M or 1 and write same number.
     const unsigned int M1 = prol?M:1;
-    const unsigned int M2 = prol?(dir>0?M:1):(dir<2?M:1);
-    const unsigned int M3 = prol?(dir>1?M:1):(dir<1?M:1);
+    const unsigned int M2 = prol?(dir>0?M:1):((dir>0||dim<2)?1:M);
+    const unsigned int M3 = prol?(dir>1?M:1):((dir>1||dim<3)?1:M);
 
     const bool last_thread_x = threadIdx.x==(n_coarse-1);
     const bool last_thread_y = threadIdx.y==(n_coarse-1);
@@ -766,8 +766,9 @@ protected:
             // any value after the first one, go ahead
             if(((m1==0) || !last_thread_x) &&
                ((m2==0) || !last_thread_y) &&
-               ((m3==0) || !last_thread_z))
+               ((m3==0) || !last_thread_z)) {
               tmp[m1+M1*(m2 + M2*m3)] += my_shvals[m1*n_src+i]*values[idx];
+            }
           }
         }
       }
@@ -789,11 +790,17 @@ protected:
 
           if(((m1==0) || !last_thread_x) &&
              ((m2==0) || !last_thread_y) &&
-             ((m3==0) || !last_thread_z))
+             ((m3==0) || !last_thread_z)) {
             values[idx] = tmp[m1 + M1*(m2 + M2*m3)];
+          }
         }
       }
     }
+  }
+
+  inline __device__ unsigned int dof1d_to_3(unsigned int x)
+  {
+    return (x>0) + (x==(fe_degree*2));
   }
 
   __device__ void weigh_values()
@@ -813,11 +820,11 @@ protected:
           const unsigned int z = (M3*threadIdx.z+m3);
 
           const unsigned int idx = x + n_fine*(y + n_fine*z);
-          const unsigned int weight_idx =
-            ((x>0)+(x==fe_degree*2)) +3*(((y>0)+(y==fe_degree*2)) + 3*((z>0)+(z==fe_degree*2)));
+          const unsigned int weight_idx = dof1d_to_3(x) +3*(dof1d_to_3(y) + 3*dof1d_to_3(z));
 
-          if(x<n_fine && y<n_fine && z<n_fine)
+          if(x<n_fine && y<n_fine && z<n_fine) {
             values[idx] *= weights[weight_idx];
+          }
         }
       }
     }
@@ -986,7 +993,7 @@ __global__ void mg_kernel (Number *dst, const Number *src, const Number *weights
   const unsigned int coarse_offset = child_offset_in_parent[coarse_cell];
   __shared__ Number values[n_fine];
 
-  loop_body body(values, weights+coarse_cell*n_child_cell_dofs,
+  loop_body body(values, weights+coarse_cell*Utilities::fixed_int_power<3,dim>::value,
                  shape_values, dof_indices_coarse+coarse_offset,
                  dof_indices_fine+coarse_cell*n_child_cell_dofs);
 
