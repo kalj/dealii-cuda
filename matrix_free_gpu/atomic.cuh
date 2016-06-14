@@ -10,7 +10,7 @@
 
 inline __device__ double atomicAddWrapper(double* address, double val)
 {
-#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
+#if  __CUDACC_VER_MAJOR__  >= 8 && ( !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600 )
   // use native instruction
   return atomicAdd(address,val);
 #else
