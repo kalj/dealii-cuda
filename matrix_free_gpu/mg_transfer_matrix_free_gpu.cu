@@ -559,7 +559,7 @@ namespace
 
     // get the valence of the individual components and compute the weights as
     // the inverse of the valence
-    weights_on_refined.resize(n_levels);
+    weights_on_refined.resize(n_levels-1);
 
     for (unsigned int level = 1; level<n_levels; ++level)
     {
@@ -577,7 +577,7 @@ namespace
 
       // we only store 3^dim weights because all dofs on a line have the same
       // valence, and all dofs on a quad have the same valence.
-      weights_on_refined[level].resize(n_owned_level_cells[level-1]*Utilities::fixed_power<dim>(3));
+      weights_on_refined[level-1].resize(n_owned_level_cells[level-1]*Utilities::fixed_power<dim>(3));
       for (unsigned int c=0; c<n_owned_level_cells[level-1]; ++c)
       {
 
@@ -586,7 +586,7 @@ namespace
           {
             unsigned int shift = 9*degree_to_3[k] + 3*degree_to_3[j];
             for (unsigned int i=0; i<n_child_dofs_1d; ++i, ++m)
-              weights_on_refined[level][c*Utilities::fixed_power<dim>(3)+shift+degree_to_3[i]] = Number(1.)/
+              weights_on_refined[level-1][c*Utilities::fixed_power<dim>(3)+shift+degree_to_3[i]] = Number(1.)/
                 // ghosted_level_vector[level].local_element(level_dof_indices[level][n_child_cell_dofs*c+m]);
                 // ghosted_level_vector[level][level_dof_indices[level][n_child_cell_dofs*c+m]];
                 level_vector[level_dof_indices[level][n_child_cell_dofs*c+m]];
@@ -662,9 +662,10 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
   for(int l=0; l<n_levels; l++) level_dof_indices[l]=level_dof_indices_host[l];
 
 
-  // FIXME: adjust for extra entry in host array? (+1)
   weights_on_refined.resize(n_levels-1);
-  for(int l=0; l<n_levels-1; l++) weights_on_refined[l] = weights_host[l+1];
+  for(int l=0; l<n_levels-1; l++) {
+    weights_on_refined[l] = weights_host[l];
+  }
 
 
   child_offset_in_parent.resize(n_levels-1);
