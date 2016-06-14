@@ -22,8 +22,6 @@
 #include "cuda_utils.cuh"
 
 
-#define ROWLENGTH 128
-
 //=============================================================================
 // This implements a class for matrix-free computations on the GPU. It
 // essentially consists of the following functions:
@@ -36,28 +34,6 @@
 // - set/copy_constrained_values: functions for assigning or copying values at
 //              the constrained DoFs (i.e. boundary values or hanging nodes).
 //=============================================================================
-
-
-// this function determines the number of cells per block, possibly at compile
-// time
-__host__ __device__ constexpr unsigned int cells_per_block_shmem(int dim,
-                                                                 int fe_degree)
-{
-#ifdef MATRIX_FREE_CELLS_PER_BLOCK
-  return MATRIX_FREE_CELLS_PER_BLOCK;
-#else
-  return dim==2 ? (fe_degree==1 ? 32
-                   : fe_degree==2 ? 2 // 8
-                   : fe_degree==3 ? 4
-                   : fe_degree==4 ? 2 // 4
-                   : 0) :
-    dim==3 ? (fe_degree==1 ? 8
-              : fe_degree==2 ? 2
-              : fe_degree==3 ? 1
-              : fe_degree==4 ? 1
-              : 0) : 0;
-#endif
-}
 
 
 
@@ -170,13 +146,9 @@ public:
   };
 
 
-  MatrixFreeGpu()
-    : constrained_dofs(NULL),
-      use_coloring(false),
-      rowlength(ROWLENGTH)
-  {}
+  MatrixFreeGpu();
 
-  unsigned int get_rowlength() const { return rowlength; }
+  unsigned int get_rowlength() const;
 
   void reinit(const Mapping<dim>        &mapping,
               const DoFHandler<dim>     &dof_handler,
@@ -189,25 +161,9 @@ public:
   void reinit(const DoFHandler<dim>     &dof_handler,
               const ConstraintMatrix    &constraints,
               const Quadrature<1>       &quad,
-              const AdditionalData      additional_data = AdditionalData())
-  {
-    MappingQ1<dim>  mapping;
-    reinit(mapping,dof_handler,constraints,quad,additional_data);
-  }
+              const AdditionalData      additional_data = AdditionalData());
 
-  const GpuData get_gpu_data(unsigned int color) const {
-    GpuData data;
-    data.quadrature_points = quadrature_points[color];
-    data.loc2glob = loc2glob[color];
-    data.inv_jac = inv_jac[color];
-    data.JxW = JxW[color];
-    data.constraint_mask = constraint_mask[color];
-    data.n_cells = n_cells[color];
-    data.use_coloring = use_coloring;
-    data.rowlength = rowlength;
-    data.rowstart = rowstart[color];
-    return data;
-  }
+  const GpuData get_gpu_data(unsigned int color) const;
 
   // apply the local operation on each element in parallel. loc_op is a vector
   // with one entry for each color. That is usually the same operator, but with
@@ -231,6 +187,51 @@ public:
 };
 
 
+//=============================================================================
+// implementations
+//=============================================================================
+
+#define ROWLENGTH 128
+
+template <int dim, typename Number>
+MatrixFreeGpu<dim,Number>::MatrixFreeGpu()
+  : constrained_dofs(NULL),
+    use_coloring(false),
+    rowlength(ROWLENGTH)
+{}
+
+
+template <int dim, typename Number>
+const unsigned int MatrixFreeGpu<dim,Number>::get_rowlength() const
+{
+  return rowlength;
+}
+
+template <int dim, typename Number>
+void MatrixFreeGpu<dim,Number>::reinit(const DoFHandler<dim>     &dof_handler,
+                                       const ConstraintMatrix    &constraints,
+                                       const Quadrature<1>       &quad,
+                                       const AdditionalData      additional_data)
+{
+  MappingQ1<dim>  mapping;
+  reinit(mapping,dof_handler,constraints,quad,additional_data);
+}
+
+template <int dim, typename Number>
+const GpuData MatrixFreeGpu<dim,Number>::get_gpu_data(unsigned int color) const
+{
+  GpuData data;
+  data.quadrature_points = quadrature_points[color];
+  data.loc2glob = loc2glob[color];
+  data.inv_jac = inv_jac[color];
+  data.JxW = JxW[color];
+  data.constraint_mask = constraint_mask[color];
+  data.n_cells = n_cells[color];
+  data.use_coloring = use_coloring;
+  data.rowlength = rowlength;
+  data.rowstart = rowstart[color];
+  return data;
+}
 
 // Struct to pass the shared memory into a general user function
 template <int dim, typename Number>
@@ -247,6 +248,27 @@ struct SharedData {
   Number             *values;
   Number             *gradients[dim];
 };
+
+// this function determines the number of cells per block, possibly at compile
+// time
+__host__ __device__ constexpr unsigned int cells_per_block_shmem(int dim,
+                                                                 int fe_degree)
+{
+#ifdef MATRIX_FREE_CELLS_PER_BLOCK
+  return MATRIX_FREE_CELLS_PER_BLOCK;
+#else
+  return dim==2 ? (fe_degree==1 ? 32
+                   : fe_degree==2 ? 2 // 8
+                   : fe_degree==3 ? 4
+                   : fe_degree==4 ? 2 // 4
+                   : 0) :
+    dim==3 ? (fe_degree==1 ? 8
+              : fe_degree==2 ? 2
+              : fe_degree==3 ? 1
+              : fe_degree==4 ? 1
+              : 0) : 0;
+#endif
+}
 
 
 template <typename LocOp,int dim, typename Number>
