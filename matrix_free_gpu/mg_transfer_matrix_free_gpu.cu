@@ -851,7 +851,7 @@ private:
 
           const unsigned int idx = x + n_fine*(y + n_fine*z);
           if(x<n_fine && y<n_fine && z<n_fine)
-            atomicAdd(&vec[dof_indices_fine[idx]],buf[idx]);
+            atomicAddWrapper(&vec[dof_indices_fine[idx]],buf[idx]);
         }
   }
 
@@ -928,7 +928,7 @@ private:
   {
     // const unsigned int coarse_idx = threadIdx.x + n_coarse*(threadIdx.y + n_coarse*threadIdx.z);
     const unsigned int idx = threadIdx.x + n_fine*(threadIdx.y + n_fine*threadIdx.z);
-    atomicAdd(&vec[dof_indices_coarse[idx]],buf[idx]);
+    atomicAddWrapper(&vec[dof_indices_coarse[idx]],buf[idx]);
   }
 
 
