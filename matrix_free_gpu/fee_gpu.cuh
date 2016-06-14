@@ -324,7 +324,7 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::distribute_local_to_globa
     {
       const unsigned int dstidx = loc2glob[i];
 
-      atomicAdd(&dst[dstidx],values[i]);
+      atomicAddWrapper(&dst[dstidx],values[i]);
     }
   }
 }

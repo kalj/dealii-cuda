@@ -427,7 +427,7 @@ struct DotProd {
   typedef Number result_type;
   __device__ static Number binary_op(const Number v1,const Number v2) {return v1*v2;}
   __device__ static Number red_op(const Number a, const Number b){return a+b;}
-  __device__ static Number atomic_op(Number *dst, const Number a){return atomicAdd(dst,(Number)a);}
+  __device__ static Number atomic_op(Number *dst, const Number a){return atomicAddWrapper(dst,(Number)a);}
   __device__ static Number ident_value() { return 0; }
 };
 
