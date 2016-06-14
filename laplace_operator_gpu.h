@@ -309,13 +309,13 @@ template <int dim, int fe_degree, typename Number>
 std::size_t
 LaplaceOperatorGpu<dim,fe_degree,Number>::memory_consumption () const
 {
-  std::size_t apa = (data.memory_consumption () +
+  std::size_t bytes = (data.memory_consumption () +
                      diagonal_values.memory_consumption() +
                      MemoryConsumption::memory_consumption(diagonal_is_available));
   for(int c=0; c<data.num_colors; c++) {
-    apa += coefficient[c].memory_consumption();
+    bytes += coefficient[c].memory_consumption();
   }
-  return apa;
+  return bytes;
 }
 
 

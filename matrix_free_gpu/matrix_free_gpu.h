@@ -218,10 +218,11 @@ public:
 
   void free();
 
-  std::size_t memory_consumption() const { return 1; }
+  std::size_t memory_consumption() const;
 
   friend class ReinitHelper<dim,Number>;
 };
+
 
 
 // Struct to pass the shared memory into a general user function
@@ -279,6 +280,25 @@ void MatrixFreeGpu<dim,Number>::cell_loop(GpuVector<Number> &dst, const GpuVecto
   }
 }
 
+
+template <int dim, typename Number>
+std::size_t MatrixFreeGpu<dim,Number>::memory_consumption() const
+{
+  std::size_t bytes = n_cells.size()*sizeof(unsigned int)     // n_cells
+    + 2*num_colors*sizeof(dim3)                               // kernel launch parameters
+    + n_constrained_dofs*sizeof(unsigned int);                // constrained_dofs
+
+  for(int c = 0; c < num_colors; ++c) {
+    bytes +=
+      n_cells[c]*rowlength*sizeof(unsigned int)     // loc2glob
+      + n_cells[c]*rowlength*dim*dim*sizeof(Number) // inv_jac
+      + n_cells[c]*rowlength*sizeof(Number)         // JxW
+      + n_cells[c]*rowlength*sizeof(point_type)     // quadrature_points
+      + n_cells[c]*sizeof(unsigned int);            // constraint_mask
+  }
+
+  return bytes;
+}
 
 #include "matrix_free_gpu.cu"
 
