@@ -99,19 +99,15 @@ private:
   void evaluate_coefficient();
 
   MatrixFreeGpu<dim,Number>   data;
-  std::vector<GpuVector<Number > >          coefficient;
+  GpuVector<Number >          coefficient;
 
   GpuVector<Number>           diagonal_values;
   bool                        diagonal_is_available;
 
 
-  unsigned int coeff_eval_x_num_blocks;
-  unsigned int coeff_eval_y_num_blocks;
-
 };
 
 
-#define BKSIZE_COEFF_EVAL 128
 
 template <int dim, int fe_degree, typename Number>
 LaplaceOperatorGpu<dim,fe_degree,Number>::LaplaceOperatorGpu ()
@@ -154,48 +150,26 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
 
 //  initialize coefficient
 
-template <int dim, int fe_degree, typename Number, typename CoefficientT>
-__global__ void local_coeff_eval (Number                                            *coefficient,
-                                  const typename MatrixFreeGpu<dim,Number>::GpuData gpu_data)
-{
-  const unsigned int cell = threadIdx.x + blockDim.x*(blockIdx.x+gridDim.x*blockIdx.y);
-  const unsigned int n_q_points = ipow<fe_degree+1,dim>::val;
+template <int dim, int fe_degree, typename Number>
+struct LocalCoeffOp {
+  static const unsigned int n_q_points = ipow<fe_degree+1,dim>::val;
 
-  if(cell < gpu_data.n_cells) {
-
-    const GpuArray<dim,Number> *qpts = gpu_data.quadrature_points;
+  static __device__ void eval (Number                     *coefficient,
+                               const GpuArray<dim,Number> *qpts)
+  {
 
     for (unsigned int q=0; q<n_q_points; ++q) {
-      const unsigned int idx = cell*gpu_data.rowlength + q;
-      coefficient[idx] =  CoefficientT::value(qpts[idx]);
+      coefficient[q] =  Coefficient<dim>::value(qpts[q]);
     }
-
   }
-}
+};
+
 
 template <int dim, int fe_degree, typename Number>
 void
 LaplaceOperatorGpu<dim,fe_degree,Number>:: evaluate_coefficient ()
 {
-
-  coefficient.resize(data.num_colors);
-  for(int c=0; c<data.num_colors; c++) {
-
-    const unsigned int coeff_eval_num_blocks = ceil(data.n_cells[c] / float(BKSIZE_COEFF_EVAL));
-    const unsigned int coeff_eval_x_num_blocks = round(sqrt(coeff_eval_num_blocks)); // get closest to even square.
-    const unsigned int coeff_eval_y_num_blocks = ceil(double(coeff_eval_num_blocks)/coeff_eval_x_num_blocks);
-
-    const dim3 grid_dim = dim3(coeff_eval_x_num_blocks,coeff_eval_y_num_blocks);
-    const dim3 block_dim = dim3(BKSIZE_COEFF_EVAL);
-
-    coefficient[c].resize (data.n_cells[c] * data.get_rowlength());
-
-    local_coeff_eval<dim,fe_degree,Number, Coefficient<dim> >
-      <<<grid_dim,block_dim>>> (coefficient[c].getData(),
-                               data.get_gpu_data(c));
-
-    CUDA_CHECK_LAST;
-  }
+  data.template evaluate_on_cells<LocalCoeffOp<dim,fe_degree,Number> >(coefficient);
 }
 
 
@@ -243,10 +217,9 @@ struct LocalOperator {
 
   // what to do on each quadrature point
   template <typename FEE>
-  __device__ inline void quad_operation(FEE *phi, const unsigned int q,
-                                        const unsigned int global_q) const
+  __device__ inline void quad_operation(FEE *phi, const unsigned int q) const
   {
-    phi->submit_gradient (coefficient[global_q] * phi->get_gradient(q), q);
+    phi->submit_gradient (coefficient[phi->get_global_q(q)] * phi->get_gradient(q), q);
   }
 
   // what to do fore each cell
@@ -278,10 +251,8 @@ void
 LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (GpuVector<Number>       &dst,
                                                      const GpuVector<Number> &src) const
 {
-  std::vector <LocalOperator<dim,fe_degree,Number> > loc_op(data.num_colors);
-  for(int c=0; c<data.num_colors; c++) {
-    loc_op[c].coefficient = coefficient[c].getDataRO();
-  }
+  LocalOperator<dim,fe_degree,Number> loc_op;
+  loc_op.coefficient = coefficient.getDataRO();
 
   data.cell_loop (dst,src,loc_op);
 
@@ -310,11 +281,10 @@ std::size_t
 LaplaceOperatorGpu<dim,fe_degree,Number>::memory_consumption () const
 {
   std::size_t bytes = (data.memory_consumption () +
-                     diagonal_values.memory_consumption() +
-                     MemoryConsumption::memory_consumption(diagonal_is_available));
-  for(int c=0; c<data.num_colors; c++) {
-    bytes += coefficient[c].memory_consumption();
-  }
+                       diagonal_values.memory_consumption() +
+                       MemoryConsumption::memory_consumption(diagonal_is_available) +
+                       coefficient.memory_consumption());
+
   return bytes;
 }
 

@@ -102,6 +102,8 @@ void ReinitHelper<dim,Number>::setup_color_arrays(const unsigned int num_colors)
   data->loc2glob.resize(num_colors);
   data->constraint_mask.resize(num_colors);
 
+  data->rowstart.resize(num_colors);
+
   if(update_flags & update_quadrature_points)
     data->quadrature_points.resize(num_colors);
 
@@ -411,6 +413,12 @@ reinit(const Mapping<dim>        &mapping,
 
   }
 
+  // setup row starts
+  rowstart[0] = 0;
+  for(int c = 1; c < num_colors; ++c) {
+    rowstart[c] = rowstart[c-1] +  n_cells[c] * get_rowlength();
+  }
+
   //---------------------------------------------------------------------------
   // constrained indices
   //---------------------------------------------------------------------------
@@ -521,5 +529,3 @@ void MatrixFreeGpu<dim,Number>::set_constrained_values(GpuVector <Number> &dst,
                                                                       n_constrained_dofs);
   CUDA_CHECK_LAST;
 }
-
-

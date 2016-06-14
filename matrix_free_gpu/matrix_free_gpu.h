@@ -143,6 +143,8 @@ private:
 
   // for alignment
   const unsigned int rowlength;
+  std::vector<unsigned int> rowstart;
+
 public:
 
   struct GpuData {
@@ -164,6 +166,7 @@ public:
 
     unsigned int rowlength;
 
+    unsigned int rowstart;
   };
 
 
@@ -202,6 +205,7 @@ public:
     data.n_cells = n_cells[color];
     data.use_coloring = use_coloring;
     data.rowlength = rowlength;
+    data.rowstart = rowstart[color];
     return data;
   }
 
@@ -210,13 +214,16 @@ public:
   // different local data (e.g. coefficient values).
   template <typename LocOp>
   void cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,
-                 const std::vector<LocOp> &loc_op) const;
+                 const LocOp &loc_op) const;
 
   // set/copy values at constrained DoFs
   void copy_constrained_values(GpuVector <Number> &dst, const GpuVector<Number> &src) const;
   void set_constrained_values(GpuVector <Number> &dst, Number val) const;
 
   void free();
+
+  template <typename Op>
+  void evaluate_on_cells(GpuVector<Number> &v) const;
 
   std::size_t memory_consumption() const;
 
@@ -270,21 +277,63 @@ __global__ void apply_kernel_shmem (Number                          *dst,
 template <int dim, typename Number>
 template <typename LocOp>
 void MatrixFreeGpu<dim,Number>::cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,
-                                          const std::vector<LocOp> &loc_op) const
+                                          const LocOp &loc_op) const
 {
   for(int c = 0; c < num_colors; ++c) {
 
     apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[c],block_dim[c]>>> (dst.getData(), src.getDataRO(),
-                                                                         loc_op[c], get_gpu_data(c));
+                                                                         loc_op, get_gpu_data(c));
     CUDA_CHECK_LAST;
   }
 }
 
 
+
+template <int dim, typename Number, typename Op>
+__global__ void cell_eval_kernel (Number                                            *vec,
+                                  const typename MatrixFreeGpu<dim,Number>::GpuData gpu_data)
+{
+  const unsigned int cell = threadIdx.x + blockDim.x*(blockIdx.x+gridDim.x*blockIdx.y);
+
+  if(cell < gpu_data.n_cells) {
+
+    const GpuArray<dim,Number> *qpts = gpu_data.quadrature_points;
+    Op::eval(vec + cell*gpu_data.rowlength,
+             qpts + cell*gpu_data.rowlength);
+
+  }
+}
+
+
+#define BKSIZE_COEFF_EVAL 128
+
+template <int dim, typename Number>
+template <typename Op>
+void MatrixFreeGpu<dim,Number>::evaluate_on_cells(GpuVector<Number> &vec) const
+{
+  vec.resize (n_cells_tot * rowlength);
+
+
+  for(int c = 0; c < num_colors; ++c) {
+
+    const unsigned int coeff_eval_num_blocks = ceil(n_cells[c] / float(BKSIZE_COEFF_EVAL));
+    const unsigned int coeff_eval_x_num_blocks = round(sqrt(coeff_eval_num_blocks)); // get closest to even square.
+    const unsigned int coeff_eval_y_num_blocks = ceil(double(coeff_eval_num_blocks)/coeff_eval_x_num_blocks);
+
+    const dim3 grid_dim = dim3(coeff_eval_x_num_blocks,coeff_eval_y_num_blocks);
+    const dim3 block_dim = dim3(BKSIZE_COEFF_EVAL);
+
+    cell_eval_kernel<dim,Number,Op> <<<grid_dim,block_dim>>> (vec.getData() + rowstart[c],
+                                                              get_gpu_data(c));
+    CUDA_CHECK_LAST;
+
+  }
+}
+
 template <int dim, typename Number>
 std::size_t MatrixFreeGpu<dim,Number>::memory_consumption() const
 {
-  std::size_t bytes = n_cells.size()*sizeof(unsigned int)     // n_cells
+  std::size_t bytes = n_cells.size()*sizeof(unsigned int)*(2) // n_cells and rowstarts
     + 2*num_colors*sizeof(dim3)                               // kernel launch parameters
     + n_constrained_dofs*sizeof(unsigned int);                // constrained_dofs
 

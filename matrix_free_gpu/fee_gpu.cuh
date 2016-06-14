@@ -110,6 +110,7 @@ private:
   Number             *gradients[dim];
 
   const unsigned int rowlength;
+  const unsigned int rowstart;
 public:
   const GpuArray<dim,Number> *quadrature_points;
 
@@ -142,12 +143,18 @@ public:
   // integrate function values and/or gradients
   __device__ void integrate(const bool integrate_val, const bool integrate_grad);
 
+  // return the global index of local quadrature point q
+  __device__ unsigned int get_global_q(const unsigned int q) const
+  {
+    return rowstart+q;
+  }
+
   // apply the function lop->quad_operation on all quadrature points (i.e. hide
   // particularities of how to loop over quadrature points from user).
   template <typename LocOp>
   __device__ void apply_quad_point_operations(const LocOp *lop) {
     const unsigned int q = (threadIdx.x%n_dofs_1d)+n_dofs_1d*threadIdx.y+(dim==3 ?(n_dofs_1d*n_dofs_1d*threadIdx.z) : 0);
-    lop->quad_operation(this,q,cellid*rowlength+q);
+    lop->quad_operation(this,q);
     __syncthreads();
   }
 
@@ -159,7 +166,8 @@ __device__ FEEvaluationGpu<Number,dim,fe_degree>::FEEvaluationGpu(int cellid,
                                                                   SharedData<dim,Number> *shdata)
   :
   FEEvaluationGpuBase<Number,dim,fe_degree>(cellid,data),
-  rowlength(data->rowlength)
+  rowlength(data->rowlength),
+  rowstart(data->rowstart + cellid*rowlength)
 {
   values = shdata->values;
   loc2glob = data->loc2glob+rowlength*cellid;
