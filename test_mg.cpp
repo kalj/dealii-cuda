@@ -20,8 +20,6 @@ int main(int argc, char **argv)
   Triangulation<dimension>               triangulation;
   FE_Q<dimension>                        fe(fe_degree);
   DoFHandler<dimension>                  dof_handler(triangulation);
-  // Quadrature<dimension> q(fe.get_unit_support_points());
-  // FEValues<dimension> fe_values(fe,q,update_q_points);
 
   GridGenerator::subdivided_hyper_cube (triangulation, 4);
 

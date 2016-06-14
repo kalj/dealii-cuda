@@ -613,8 +613,6 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
 
   const unsigned int n_levels = tria.n_global_levels();
 
-  printf("n_levels: %d\n",n_levels);
-
   // we collect all child DoFs of a mother cell together. For faster
   // tensorized operations, we align the degrees of freedom
   // lexicographically. We distinguish FE_Q elements and FE_DGQ elements
@@ -659,7 +657,9 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
 
 
   level_dof_indices.resize(n_levels);
-  for(int l=0; l<n_levels; l++) level_dof_indices[l]=level_dof_indices_host[l];
+  for(int l=0; l<n_levels; l++) {
+    level_dof_indices[l]=level_dof_indices_host[l];
+  }
 
 
   weights_on_refined.resize(n_levels-1);
@@ -684,19 +684,18 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
     child_offset_in_parent[l] = offsets;
   }
 
-
   std::vector<types::global_dof_index> dirichlet_index_vector;
 
   dirichlet_indices.resize(n_levels); // ?
 
-  for(int l=0; l<n_levels; l++) {
+  if(mg_constrained_dofs != NULL) {
 
-    if(mg_constrained_dofs != NULL) {
+    for(int l=0; l<n_levels; l++) {
+
       mg_constrained_dofs->get_boundary_indices(l).fill_index_vector(dirichlet_index_vector);
 
       dirichlet_indices[l] = dirichlet_index_vector;
     }
-
   }
 
 }
@@ -941,7 +940,6 @@ private:
 
   __device__ void write_coarse(Number *vec) const
   {
-    // const unsigned int coarse_idx = threadIdx.x + n_coarse*(threadIdx.y + n_coarse*threadIdx.z);
     const unsigned int idx = threadIdx.x + n_fine*(threadIdx.y + n_fine*threadIdx.z);
     atomicAddWrapper(&vec[dof_indices_coarse[idx]],values[idx]);
   }
@@ -1086,7 +1084,6 @@ void MGTransferMatrixFreeGpu<dim,Number>
 
   // now set constrained dofs to 0
 
-  set_constrained_dofs(dst,to_level,0);
 
   // this->ghosted_level_vector[to_level].compress(VectorOperation::add);
   // dst = this->ghosted_level_vector[to_level];
