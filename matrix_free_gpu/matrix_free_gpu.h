@@ -163,7 +163,7 @@ public:
               const Quadrature<1>       &quad,
               const AdditionalData      additional_data = AdditionalData());
 
-  const GpuData get_gpu_data(unsigned int color) const;
+  GpuData get_gpu_data(unsigned int color) const;
 
   // apply the local operation on each element in parallel. loc_op is a vector
   // with one entry for each color. That is usually the same operator, but with
@@ -202,7 +202,7 @@ MatrixFreeGpu<dim,Number>::MatrixFreeGpu()
 
 
 template <int dim, typename Number>
-const unsigned int MatrixFreeGpu<dim,Number>::get_rowlength() const
+unsigned int MatrixFreeGpu<dim,Number>::get_rowlength() const
 {
   return rowlength;
 }
@@ -218,9 +218,10 @@ void MatrixFreeGpu<dim,Number>::reinit(const DoFHandler<dim>     &dof_handler,
 }
 
 template <int dim, typename Number>
-const GpuData MatrixFreeGpu<dim,Number>::get_gpu_data(unsigned int color) const
+MatrixFreeGpu<dim,Number>::GpuData
+MatrixFreeGpu<dim,Number>::get_gpu_data(unsigned int color) const
 {
-  GpuData data;
+  MatrixFreeGpu<dim,Number>::GpuData data;
   data.quadrature_points = quadrature_points[color];
   data.loc2glob = loc2glob[color];
   data.inv_jac = inv_jac[color];
@@ -335,14 +336,13 @@ void MatrixFreeGpu<dim,Number>::evaluate_on_cells(GpuVector<Number> &vec) const
 {
   vec.resize (n_cells_tot * rowlength);
 
-
   for(int c = 0; c < num_colors; ++c) {
 
-    const unsigned int coeff_eval_num_blocks = ceil(n_cells[c] / float(BKSIZE_COEFF_EVAL));
-    const unsigned int coeff_eval_x_num_blocks = round(sqrt(coeff_eval_num_blocks)); // get closest to even square.
-    const unsigned int coeff_eval_y_num_blocks = ceil(double(coeff_eval_num_blocks)/coeff_eval_x_num_blocks);
+    const unsigned int num_blocks = ceil(n_cells[c] / float(BKSIZE_COEFF_EVAL));
+    const unsigned int num_blocks_x = round(sqrt(num_blocks)); // get closest to even square.
+    const unsigned int num_blocks_y = ceil(double(num_blocks)/num_blocks_x);
 
-    const dim3 grid_dim = dim3(coeff_eval_x_num_blocks,coeff_eval_y_num_blocks);
+    const dim3 grid_dim = dim3(num_blocks_x,num_blocks_y);
     const dim3 block_dim = dim3(BKSIZE_COEFF_EVAL);
 
     cell_eval_kernel<dim,Number,Op> <<<grid_dim,block_dim>>> (vec.getData() + rowstart[c],

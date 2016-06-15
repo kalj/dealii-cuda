@@ -415,8 +415,9 @@ reinit(const Mapping<dim>        &mapping,
 
   // setup row starts
   rowstart[0] = 0;
-  for(int c = 1; c < num_colors; ++c) {
-    rowstart[c] = rowstart[c-1] +  n_cells[c] * get_rowlength();
+  for(int c = 0; c < num_colors-1; ++c) {
+
+    rowstart[c+1] = rowstart[c] +  n_cells[c] * get_rowlength();
   }
 
   //---------------------------------------------------------------------------
