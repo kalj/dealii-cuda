@@ -152,11 +152,7 @@ public:
   // apply the function lop->quad_operation on all quadrature points (i.e. hide
   // particularities of how to loop over quadrature points from user).
   template <typename LocOp>
-  __device__ void apply_quad_point_operations(const LocOp *lop) {
-    const unsigned int q = (threadIdx.x%n_dofs_1d)+n_dofs_1d*threadIdx.y+(dim==3 ?(n_dofs_1d*n_dofs_1d*threadIdx.z) : 0);
-    lop->quad_operation(this,q);
-    __syncthreads();
-  }
+  __device__ void apply_quad_point_operations(const LocOp *lop);
 
 };
 
@@ -274,6 +270,20 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::integrate(const bool inte
     TensorOpsShmem<dim,fe_degree+1,Number>::quad_int_grad<false> (values,gradients);
   __syncthreads();
 }
+
+
+template <typename Number, int dim, int fe_degree>
+template <typename LocOp>
+__device__ void FEEvaluationGpu<Number,dim,fe_degree>::apply_quad_point_operations(const LocOp *lop)
+{
+  const unsigned int q = (dim==1 ? threadIdx.x%n_dofs_1d :
+                          dim==2 ? threadIdx.x + n_dofs_1d*(threadIdx.y%n_dofs_1d) :
+                          threadIdx.x + n_dofs_1d*(threadIdx.y + n_dofs_1d*(threadIdx.z%n_dofs_1d)));
+
+  lop->quad_operation(this,q);
+  __syncthreads();
+}
+
 
 //=============================================================================
 // Read DoF values
