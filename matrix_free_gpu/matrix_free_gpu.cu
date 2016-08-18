@@ -183,7 +183,11 @@ void ReinitHelper<dim,Number>::get_cell_data(const T& cell, const unsigned int c
   }
 
   if(update_flags & update_JxW_values) {
-    const std::vector<Number > & jxws = fe_values.get_JxW_values();
+    const std::vector<double > & jxws_d = fe_values.get_JxW_values();
+    const unsigned int n = jxws_d.size();
+    std::vector<Number > jxws(n);
+    for(int i=0; i<n; ++i)
+      jxws[i] = Number(jxws_d[i]);
     memcpy(&JxW_host[cellid*rowlength],&jxws[0],qpts_per_cell*sizeof(Number));
   }
 
