@@ -15,8 +15,10 @@
 #include "atomic.cuh"
 
 #include "gpu_array.cuh"
-// #include "hanging_nodes.cuh"
 
+#ifdef MATRIX_FREE_HANGING_NODES
+#include "hanging_nodes.cuh"
+#endif
 //=============================================================================
 // Object which lives on the Gpu which contains methods for element local
 // operations, such as gradient and value evaluation. This is created for each
@@ -299,8 +301,10 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Num
   const unsigned int srcidx = loc2glob[idx];
   values[idx] = __ldg(&src[srcidx]);
 
-  // if(constraint_mask)
-  //   resolve_hanging_nodes_shmem<dim,fe_degree,NOTRANSPOSE>(values,constraint_mask);
+#ifdef MATRIX_FREE_HANGING_NODES
+  if(constraint_mask)
+    resolve_hanging_nodes_shmem<dim,fe_degree,NOTRANSPOSE>(values,constraint_mask);
+#endif
 
   __syncthreads();
 }
@@ -314,8 +318,10 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Num
 template <typename Number, int dim, int fe_degree>
 __device__ void FEEvaluationGpu<Number,dim,fe_degree>::distribute_local_to_global(Number *dst)
 {
-  // if(constraint_mask)
-  //   resolve_hanging_nodes_shmem<dim,fe_degree,TRANSPOSE>(values,constraint_mask);
+#ifdef MATRIX_FREE_HANGING_NODES
+  if(constraint_mask)
+    resolve_hanging_nodes_shmem<dim,fe_degree,TRANSPOSE>(values,constraint_mask);
+#endif
 
   if(use_coloring) {
 
