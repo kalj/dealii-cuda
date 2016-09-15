@@ -386,6 +386,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
       for (unsigned int q=0; q<n_q_points; ++q) {
         rhs_val += ((fe_values.shape_value(i,q) * rhs_values[q]
                      - fe_values.shape_grad(i,q) * solution_gradients[q]
+                     * coefficient_values[q]
                      ) *
                     fe_values.JxW(q));
 
