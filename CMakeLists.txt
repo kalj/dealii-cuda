@@ -42,6 +42,9 @@ ENDIF()
 
 INCLUDE_DIRECTORIES(matrix_free_gpu)
 
+CUDA_ADD_EXECUTABLE(test_spm test_spm.cu matrix_free_gpu/cuda_sparse_matrix.cu matrix_free_gpu/gpu_vec.cu)
+TARGET_LINK_LIBRARIES(test_spm ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
+
 CUDA_ADD_EXECUTABLE(poisson poisson.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
 TARGET_LINK_LIBRARIES(poisson ${LIBRARIES})
 
