@@ -17,37 +17,11 @@
 #include "matrix_free_gpu/matrix_free_gpu.h"
 #include "matrix_free_gpu/fee_gpu.cuh"
 #include "matrix_free_gpu/cuda_utils.cuh"
-
+#include "poisson_common.h"
 
 using namespace dealii;
 
 
-//=============================================================================
-// coefficient
-//=============================================================================
-
-template <int dim>
-struct Coefficient
-{
-  static __host__ double value (const Point<dim> &p){
-    // return 1. / (0.05 + 2.*(p.norm_square()));
-    return 1.;
-  }
-
-  template <typename Number>
-  static __device__ Number value (const GpuArray<dim,Number> &p){
-    // return 1. / (0.05 + 2.*(p.norm_square()));
-    return 1.;
-  }
-
-  static __host__  Tensor<1,dim> gradient (const Point<dim> &p){
-    // const Tensor<1,dim> dist = -p;
-    // const double den = 0.05 + 2.*dist.norm_square();
-    // return (4. / (den*den))*dist;
-    const Tensor<1,dim> dist = p*0;
-    return dist;
-  }
-};
 
 //=============================================================================
 // operator
