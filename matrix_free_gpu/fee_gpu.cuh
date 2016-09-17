@@ -278,9 +278,9 @@ template <typename Number, int dim, int fe_degree>
 template <typename LocOp>
 __device__ void FEEvaluationGpu<Number,dim,fe_degree>::apply_quad_point_operations(const LocOp *lop)
 {
-  const unsigned int q = (dim==1 ? threadIdx.x%n_dofs_1d :
-                          dim==2 ? threadIdx.x + n_dofs_1d*(threadIdx.y%n_dofs_1d) :
-                          threadIdx.x + n_dofs_1d*(threadIdx.y + n_dofs_1d*(threadIdx.z%n_dofs_1d)));
+  const unsigned int q = (dim==1 ? threadIdx.x%n_q_points_1d :
+                          dim==2 ? threadIdx.x%n_q_points_1d + n_q_points_1d*threadIdx.y :
+                          threadIdx.x%n_q_points_1d + n_q_points_1d*(threadIdx.y + n_q_points_1d*threadIdx.z));
 
   lop->quad_operation(this,q);
   __syncthreads();
@@ -294,9 +294,9 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::apply_quad_point_operatio
 template <typename Number, int dim, int fe_degree>
 __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Number *src)
 {
-  const unsigned int  idx = (threadIdx.x%n_q_points_1d)
-    +(dim>1 ? threadIdx.y : 0)*n_q_points_1d
-    +(dim>2 ? threadIdx.z : 0)*n_q_points_1d*n_q_points_1d;
+  const unsigned int  idx = (threadIdx.x%n_dofs_1d)
+    +(dim>1 ? threadIdx.y : 0)*n_dofs_1d
+    +(dim>2 ? threadIdx.z : 0)*n_dofs_1d*n_dofs_1d;
 
   const unsigned int srcidx = loc2glob[idx];
   values[idx] = __ldg(&src[srcidx]);
