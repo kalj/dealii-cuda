@@ -49,8 +49,7 @@
 #include <sstream>
 
 
-namespace Step37
-{
+
   using namespace dealii;
 
 #define N_ITERATIONS 100
@@ -377,12 +376,12 @@ const unsigned int dimension = 2;
     void setup_system ();
     void solve ();
 
-    typedef LaplaceOperator<dim,degree_finite_element,double> SystemMatrixType;
-
     Triangulation<dim>               triangulation;
     FE_Q<dim>                        fe;
     DoFHandler<dim>                  dof_handler;
     ConstraintMatrix                 constraints;
+
+    typedef LaplaceOperator<dim,degree_finite_element,double> SystemMatrixType;
 
     SystemMatrixType                 system_matrix;
 
@@ -419,40 +418,25 @@ const unsigned int dimension = 2;
 
     dof_handler.distribute_dofs (fe);
 
-    std::cout << "Number of degrees of freedom: "
-              << dof_handler.n_dofs()
-              << std::endl;
 
 
-  std::cout << "Number of elements: "
-            << dof_handler.get_tria().n_active_cells()
-            << std::endl;
 
     constraints.clear();
     VectorTools::interpolate_boundary_values (dof_handler,
                                               0,
                                               ZeroFunction<dim>(),
                                               constraints);
+    DoFTools::make_hanging_node_constraints(dof_handler,constraints);
     constraints.close();
     setup_time += time.wall_time();
-    time_details << "Distribute DoFs & B.C.     (CPU/wall) "
-                 << time() << "s/" << time.wall_time() << "s" << std::endl;
     time.restart();
 
     system_matrix.reinit (dof_handler, constraints);
-    std::cout.precision(4);
-    std::cout << "System matrix memory consumption:     "
-              << system_matrix.memory_consumption()*1e-6
-              << " MB."
-              << std::endl;
 
     dst.reinit (system_matrix.n());
     src.reinit (system_matrix.n());
 
     setup_time += time.wall_time();
-    time_details << "Setup matrix-free system   (CPU/wall) "
-                 << time() << "s/" << time.wall_time() << "s" << std::endl;
-    time.restart();
 
   }
 
@@ -473,67 +457,52 @@ const unsigned int dimension = 2;
 
     time.stop();
 
-    std::cout << "Time solve ("
-              << n_iterations
-              << " iterations)  (CPU/wall) " << time() << "s/"
-              << time.wall_time() << "s\n";
 
-    std::cout << "Per iteration "
-              << time.wall_time() / n_iterations << "s\n";
+  printf("%d\t%d\t%d\t%g\n",dim,fe_degree,dof_handler.n_dofs(),time.wall_time() / n_iterations);
   }
 
 
 
 
-  template <int dim>
-  void LaplaceProblem<dim>::run ()
-  {
+template <int dim>
+void LaplaceProblem<dim,fe_degree>::run (int n_ref)
+{
 
-    GridGenerator::hyper_cube (triangulation, 0., 1.);
+#ifdef BALL_GRID
+  GridGenerator::hyper_ball (triangulation);
+#else
+  GridGenerator::hyper_cube (triangulation, 0., 1.);
+#endif
 
-      // triangulation.refine_global (1);
+  triangulation.refine_global (n_ref);
 
-    if(dim == 2) {
-      triangulation.refine_global (6);
-    }
-    else if(dim == 3) {
-      triangulation.refine_global (4);
-    }
-
-    if(degree_finite_element ==1) {
-      triangulation.refine_global (3);
-    }
-    else if(degree_finite_element ==2) {
-      triangulation.refine_global (2);
-    }
-    else if(degree_finite_element ==3) {
-      triangulation.refine_global (1);
-    }
-    else if(degree_finite_element ==4) {
-      triangulation.refine_global (1);
-
-    }
-
-    setup_system ();
-    solve ();
-    std::cout << std::endl;
-  }
+  setup_system ();
+  solve ();
 }
 
 
-
-
-int main ()
+int main (int argc, char **argv)
 {
   try
-    {
-      using namespace Step37;
+  {
 
-      deallog.depth_console(0);
-       printf("d: %d, p: %d\n",dimension,degree_finite_element);
-      LaplaceProblem<dimension> laplace_problem;
-      laplace_problem.run ();
+    int max_refinement = 1;
+    int min_refinement = 0;
+    if(argc > 1)
+      max_refinement = atoi(argv[1]);
+
+    if(argc > 2)
+      min_refinement = atoi(argv[2]);
+
+    deallog.depth_console(0);
+
+
+    for(int r=min_refinement; r<=max_refinement; r++) {
+      LaplaceProblem<dimension,degree_finite_element> laplace_problem;
+
+      laplace_problem.run ( r);
     }
+  }
   catch (std::exception &exc)
     {
       std::cerr << std::endl << std::endl

@@ -3,15 +3,15 @@
 # @(#)bmscript.sh
 # @author Karl Ljungkvist <karl.ljungkvist@it.uu.se>
 
-if [ "$1" == 'pmem' ] ; then
-    PARALLELIZATION='pmem'
-elif [ "$1" == 'shmem' ] ; then
-    PARALLELIZATION='shmem'
+
+if [ "$1" == 'ball' ] ; then
+    GRID='ball'
+elif [ "$1" == 'cube' ] ; then
+    GRID='cube'
 else
-    echo "invalid parallelization method: $1"
+    echo "invalid grid type: $1"
     exit 1
 fi
-
 
 if [ "$2" == "color" ] ; then
     METHOD='color'
@@ -28,48 +28,56 @@ if [ "$3" == "j0" ] ; then
     USE_J0=1
 fi
 
+if [ "$4" == "hn" ] ; then
+    HANGING=1
+fi
+
 function comp()
 {
     d=$1
     p=$2
-    descr=$3
-    bksize=$4
 
-    if [ "$PARALLELIZATION" == 'pmem' ] ; then
-        BDIR=build_${d}_${p}_${bksize}
-    else
-        BDIR=build_${d}_${p}_${descr}_${bksize}
-    fi
+    BDIR=build_${d}_${p}
 
     if [ -d $BDIR ] ;
     then
-        >&2 echo "ERROR: Directory $BDIR already exists!"
-        exit 1
+        # >&2 echo "ERROR: Directory $BDIR already exists!"
+        # exit 1
+        >&2 echo "Note: Directory $BDIR already exists"
+
+    else
+        mkdir $BDIR
     fi
-    mkdir $BDIR
+
     (
         cd $BDIR
 
-        if [ "$METHOD" == "color" ] ; then
-            CMAKE_CXX_FLAGS=" -DDIMENSION=${d} -DDEGREE_FE=${p} -march=native -DMATRIX_FREE_BKSIZE_APPLY=${bksize} -DMATRIX_FREE_COLOR --std=c++11"
-        elif [ "$METHOD" == 'nothing' ] ; then
-            CMAKE_CXX_FLAGS=" -DDIMENSION=${d} -DDEGREE_FE=${p} -march=native -DMATRIX_FREE_BKSIZE_APPLY=${bksize} -DMATRIX_FREE_NOTHING --std=c++11"
-        else
-            CMAKE_CXX_FLAGS=" -DDIMENSION=${d} -DDEGREE_FE=${p} -march=native -DMATRIX_FREE_BKSIZE_APPLY=${bksize} --std=c++11"
+        if [ "$GRID" == 'ball' ] ; then
+            CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DBALL_GRID"
         fi
 
-        if [ "$PARALLELIZATION" == 'shmem' ] ; then
-            CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DMATRIX_FREE_PAR_IN_ELEM"
+        if [ "$METHOD" == "color" ] ; then
+            CMAKE_CXX_FLAGS=" -DDIMENSION=${d} -DDEGREE_FE=${p} -DMATRIX_FREE_COLOR"
+        elif [ "$METHOD" == 'nothing' ] ; then
+            CMAKE_CXX_FLAGS=" -DDIMENSION=${d} -DDEGREE_FE=${p} -DMATRIX_FREE_NOTHING"
+        else
+            CMAKE_CXX_FLAGS=" -DDIMENSION=${d} -DDEGREE_FE=${p}"
         fi
 
         if [ "$USE_J0" == '1' ] ; then
-            CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DMATRIX_FREE_J0"
+            CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DMATRIX_FREE_UNIFORM_MESH"
+        fi
+
+        if [ "$HANGING" == '1' ] ; then
+            CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DMATRIX_FREE_HANGING_NODES"
         fi
 
 
-        cmake -DCMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS}"  -DCMAKE_BUILD_TYPE=RELEASE -D DEAL_II_DIR=/local/home/karll/sw/deal.II ../ 2>>compile.log >>compile.log
+        cmake -DCMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -march=native --std=c++11"  -DCMAKE_BUILD_TYPE=Release ../ 2>>compile.log >>compile.log
 
         make bmop 2>>compile.log >>compile.log
+
+        make bmop_spm 2>>compile.log >>compile.log
     ) &
 
 }
@@ -78,26 +86,29 @@ function run()
 {
     d=$1
     p=$2
-    descr=$3
-    bksize=$4
 
-    if [ "$PARALLELIZATION" == 'pmem' ] ; then
-        BDIR=build_${d}_${p}_${bksize}
-        printf "%5d %5d %5d %9s\t" ${d} ${p} ${bksize}
-    else
-        BDIR=build_${d}_${p}_${descr}_${bksize}
-        printf "%5d %5d %5d %9s\t" ${d} ${p} ${bksize} $descr
-    fi
+    # max ndofs
+    M=10000000
+
+    #factor amplifying 2D problems somewhat (now 10 more DoFs are allowed in 2D)
+    fact=10
+    maxref=$(octave -q --eval "disp( floor( log2( (nthroot(${M}*(${fact})**(3-${d})),${d})-1)/${p} ) ) )")
+    minref=$(octave -q --eval "disp(max(0,${maxref}-4 ))")
+
+
+    BDIR=build_${d}_${p}
     cd $BDIR
 
-
     if [ -x ./bmop ] ; then
-        ./bmop > output.log
-        cat output.log | sed -n 's!.*Per iteration \(.*\)s$!\1!p'
-
-    else
-        echo '-'
+        echo '-- mf_gpu --'
+        ./bmop ${maxref} ${minref} | tee mf_gpu_output.log
     fi
+
+    if [ -x ./bmop_spm ] ; then
+        echo '-- spm_gpu --'
+        ./bmop_spm ${maxref} ${minref} | tee spm_gpu_output.log
+    fi
+
     cd ..
 }
 
@@ -108,29 +119,9 @@ function myloop()
 
         for p in 1 2 3 4 ; do
 
-            if [ "$PARALLELIZATION" == 'shmem' ] ; then
-                T=$(($p+1))
-                NTS=$(( $T**$d ))
-
-                if [ $d == 3 ] ; then
-                    descr="[$T,$T,$T]"
-                else
-                    descr="[$T,$T]"
-                fi
-
-                bksize=32
-                for ((bksize=1 ; bksize*$NTS <= 320 ; bksize *= 2)) ; do
-                    $myfun $d $p $descr $bksize
-                done
-            else
-
-                for ((bksize=16 ; bksize <= 64 ; bksize *= 2)) ; do
-                    $myfun $d $p apa $bksize
-                done
-            fi
+            $myfun $d $p
 
         done
-        wait
 
     done
 }
