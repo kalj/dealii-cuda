@@ -109,7 +109,11 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
 {
   typename MatrixFreeGpu<dim,Number>::AdditionalData additional_data;
 
+#ifdef MATRIX_FREE_COLOR
   additional_data.use_coloring = true;
+#else
+  additional_data.use_coloring = false;
+#endif
 
   additional_data.parallelization_scheme = MatrixFreeGpu<dim,Number>::scheme_par_in_elem;
 
