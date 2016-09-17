@@ -12,7 +12,11 @@
 #include <deal.II/base/graph_coloring.h>
 
 #include "coloring.h"
-// #include "hanging_nodes.cuh"
+
+#ifdef MATRIX_FREE_HANGING_NODES
+#include "hanging_nodes.cuh"
+#endif
+
 #include "cuda_utils.cuh"
 
 
@@ -55,7 +59,9 @@ private:
   const UpdateFlags &update_flags;
 
   // For setting up hanging node constraints
-  // HangingNodes<dim> hanging_nodes;
+#ifdef MATRIX_FREE_HANGING_NODES
+  HangingNodes<dim> hanging_nodes;
+#endif
 
   // for padding
   const unsigned int rowlength;
@@ -76,7 +82,9 @@ public:
                  update_inverse_jacobians | update_quadrature_points |
                  update_values | update_gradients | update_JxW_values),
       lexicographic_inv(shape_info.lexicographic_numbering),
-      // hanging_nodes(fe_degree,dof_handler,lexicographic_inv),
+#ifdef MATRIX_FREE_HANGING_NODES
+      hanging_nodes(fe_degree,dof_handler,lexicographic_inv),
+#endif
       update_flags(update_flags),
       rowlength(data->get_rowlength())
   {
@@ -168,9 +176,11 @@ void ReinitHelper<dim,Number>::get_cell_data(const T& cell, const unsigned int c
     lexicographic_dof_indices[i] = local_dof_indices[lexicographic_inv[i]];
 
   // setup hanging nodes
-  // hanging_nodes.setup_constraints (constraint_mask_host[cellid],
-  //                                  lexicographic_dof_indices,
-  //                                  cell,cellid);
+#ifdef MATRIX_FREE_HANGING_NODES
+  hanging_nodes.setup_constraints (constraint_mask_host[cellid],
+                                   lexicographic_dof_indices,
+                                   cell,cellid);
+#endif
 
   memcpy(&loc2glob_host[cellid*rowlength],&lexicographic_dof_indices[0],dofs_per_cell*sizeof(unsigned int));
 
