@@ -323,26 +323,18 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::distribute_local_to_globa
     resolve_hanging_nodes_shmem<dim,fe_degree,TRANSPOSE>(values,constraint_mask);
 #endif
 
-  if(use_coloring) {
-
+  {
     const unsigned int  i = (threadIdx.x%n_q_points_1d)
       +(dim>1 ? threadIdx.y : 0)*n_q_points_1d
       +(dim>2 ? threadIdx.z : 0)*n_q_points_1d*n_q_points_1d;
-    {
-      const unsigned int dstidx = loc2glob[i];
+    const unsigned int dstidx = loc2glob[i];
+
+    if(use_coloring)
       dst[dstidx] += values[i];
-    }
-  }
-  else {
-    const unsigned int  i = (threadIdx.x%n_q_points_1d)
-      +(dim>1 ? threadIdx.y : 0)*n_q_points_1d
-      +(dim>2 ? threadIdx.z : 0)*n_q_points_1d*n_q_points_1d;
-    {
-      const unsigned int dstidx = loc2glob[i];
-
+    else
       atomicAddWrapper(&dst[dstidx],values[i]);
-    }
   }
+
 }
 
 #endif
