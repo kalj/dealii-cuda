@@ -174,14 +174,11 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
   int ncells =  dof_handler.get_triangulation().n_active_cells();
-  int print_interval = ncells/100;
-
-  int c=0;
 
   typename DoFHandler<dim>::active_cell_iterator
     cell = dof_handler.begin_active(),
     endc = dof_handler.end();
-  for (; cell!=endc; ++cell, ++c)
+  for (; cell!=endc; ++cell)
   {
 
 
