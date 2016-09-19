@@ -87,24 +87,72 @@ function run()
     d=$1
     p=$2
 
-    # max ndofs
-    M=10000000
-
-    #factor amplifying 2D problems somewhat (now 10 more DoFs are allowed in 2D)
-    fact=10
-    maxref=$(octave -q --eval "disp( floor( log2( (nthroot(${M}*(${fact})**(3-${d})),${d})-1)/${p} ) ) )")
-    minref=$(octave -q --eval "disp(max(0,${maxref}-4 ))")
-
 
     BDIR=build_${d}_${p}
     cd $BDIR
 
     if [ -x ./bmop ] ; then
+
+        if [ "${d}" == 2 ] ; then
+
+            if [ "${p}" == 1 ] ; then
+                maxref=12
+            elif [ "${p}" == 2 ] ; then
+                maxref=11
+            elif [ "${p}" == 3 ] ; then
+                maxref=11
+            elif [ "${p}" == 4 ] ; then
+                maxref=11
+            fi
+        else
+            if [ "${p}" == 1 ] ; then
+                maxref=7
+            elif [ "${p}" == 2 ] ; then
+                maxref=7
+            elif [ "${p}" == 3 ] ; then
+                maxref=6
+            elif [ "${p}" == 4 ] ; then
+                maxref=6
+            fi
+        fi
+
+        minref=$(octave -q --eval "disp(max(0,${maxref}-4 ))")
+
         echo '-- mf_gpu --'
         ./bmop ${maxref} ${minref} | tee mf_gpu_output.log
     fi
 
     if [ -x ./bmop_spm ] ; then
+
+
+        if [ "${d}" == 2 ] ; then
+
+            if [ "${p}" == 1 ] ; then
+                maxref=12
+            elif [ "${p}" == 2 ] ; then
+                maxref=11
+            elif [ "${p}" == 3 ] ; then
+                maxref=10
+            elif [ "${p}" == 4 ] ; then
+                maxref=10
+                # if using hyb format:
+                # maxref=9
+            fi
+        else
+            if [ "${p}" == 1 ] ; then
+                maxref=7
+            elif [ "${p}" == 2 ] ; then
+                maxref=6
+            elif [ "${p}" == 3 ] ; then
+                maxref=5
+            elif [ "${p}" == 4 ] ; then
+                maxref=5
+            fi
+        fi
+
+        minref=$(octave -q --eval "disp(max(0,${maxref}-4 ))")
+
+
         echo '-- spm_gpu --'
         ./bmop_spm ${maxref} ${minref} | tee spm_gpu_output.log
     fi
