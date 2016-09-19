@@ -338,6 +338,10 @@ reinit(const Mapping<dim>        &mapping,
   const unsigned int n_dofs_1d = fe_degree+1;
   const unsigned int n_q_points_1d = quad.size();
 
+
+  // set row length to the closest power of two larger than or equal to the number of threads
+  rowlength = 1 << static_cast<unsigned int>(ceil(dim*log2(fe_degree+1.0)));
+
   Assert(n_dofs_1d == n_q_points_1d,ExcMessage("n_q_points_1d must be equal to fe_degree+1."));
 
   n_dofs = dof_handler.n_dofs();

@@ -118,7 +118,7 @@ private:
   dim3 constr_block_dim;
 
   // for alignment
-  const unsigned int rowlength;
+  unsigned int rowlength;
   std::vector<unsigned int> rowstart;
 
 public:
@@ -191,13 +191,12 @@ public:
 // implementations
 //=============================================================================
 
-#define ROWLENGTH 128
 
 template <int dim, typename Number>
 MatrixFreeGpu<dim,Number>::MatrixFreeGpu()
   : constrained_dofs(NULL),
     use_coloring(false),
-    rowlength(ROWLENGTH)
+    rowlength(0)
 {}
 
 
