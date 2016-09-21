@@ -22,6 +22,7 @@
 #include <deal.II/grid/tria_iterator.h>
 #include <deal.II/grid/tria_boundary_lib.h>
 #include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/manifold_lib.h>
 
 #include <deal.II/numerics/vector_tools.h>
 
@@ -232,14 +233,15 @@ void LaplaceProblem<dim,fe_degree>::run (int n_ref)
 {
 #ifdef BALL_GRID
   GridGenerator::hyper_ball (triangulation);
+  static const SphericalManifold<dim> boundary;
+  triangulation.set_all_manifold_ids_on_boundary(0);
+  triangulation.set_manifold (0, boundary);
 #else
   GridGenerator::hyper_cube (triangulation, 0., 1.);
 #endif
 
   triangulation.refine_global (n_ref);
 
-  // set up roughly similar grids for different fe_degree (and scale up 2D
-  // problem somewhat)
 
 
   setup_system ();
