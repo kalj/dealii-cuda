@@ -32,6 +32,17 @@ if [ "$4" == "hn" ] ; then
     HANGING=1
 fi
 
+if [ "$5" == "adaptive" ] ; then
+    ADAPTIVE=1
+fi
+
+
+if [ $ADAPTIVE == 1 ] && [ $HANGING != 1 ] ; then
+    echo "it doesn't make sense with adaptivity without hanging node treatment!"
+    exit 1
+fi
+
+
 function comp()
 {
     d=$1
@@ -71,6 +82,10 @@ function comp()
 
         if [ "$HANGING" == '1' ] ; then
             CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DMATRIX_FREE_HANGING_NODES"
+        fi
+
+        if [ "$ADAPTIVE" == '1' ] ; then
+            CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DADAPTIVE_GRID"
         fi
 
 
