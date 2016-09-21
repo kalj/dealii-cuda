@@ -139,7 +139,7 @@ function run()
         minref=$(octave -q --eval "disp(max(0,${maxref}-4 ))")
 
         echo '-- mf_gpu --'
-        ./bmop ${maxref} ${minref} | tee mf_gpu_output.log
+        unbuffer ./bmop ${maxref} ${minref} | tee mf_gpu_output.log
     fi
 
     if [ -x ./bmop_spm ] ; then
@@ -179,7 +179,7 @@ function run()
 
 
         echo '-- spm_gpu --'
-        ./bmop_spm ${maxref} ${minref} | tee spm_gpu_output.log
+        unbuffer ./bmop_spm ${maxref} ${minref} | tee spm_gpu_output.log
     fi
 
     cd ..
