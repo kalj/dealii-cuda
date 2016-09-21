@@ -118,7 +118,7 @@ function run()
             elif [ "${p}" == 3 ] ; then
                 maxref=11
             elif [ "${p}" == 4 ] ; then
-                maxref=11
+                maxref=10
             fi
         else
             if [ "${p}" == 1 ] ; then
@@ -154,7 +154,7 @@ function run()
             elif [ "${p}" == 3 ] ; then
                 maxref=10
             elif [ "${p}" == 4 ] ; then
-                maxref=10
+                maxref=9
                 # if using hyb format:
                 # maxref=9
             fi
