@@ -244,11 +244,16 @@ void LaplaceProblem<dim,fe_degree>::run (int n_ref)
 
 
 #ifdef ADAPTIVE_GRID
-  triangulation.refine_global (max(n_ref-2,0));
+  triangulation.refine_global (std::max(n_ref-2,0));
   {
     float reduction = 0;
     if(ball)
-      reduction = 0.021;
+      if(dim==2)
+        reduction = 0.021;
+      else
+        reduction = 0.04;
+    else if(dim==3)
+        reduction = 0.015;
     // the radii in this refinement are adjusted such that we hit similar number
     // of dofs as the globally refined case on a similar situation
 
