@@ -1,4 +1,4 @@
-SET(TARGET "opbm")
+SET(TARGET "bmop-cpu")
 
 SET(TARGET_SRC
   ${TARGET}.cc
