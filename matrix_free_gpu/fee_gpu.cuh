@@ -29,7 +29,7 @@
 
 // This is a base class containing common code and data. Subclasses implement
 // most operations.
-template <int dim, int fe_degree, typename Number>
+template <int dim, int fe_degree, int n_components, typename Number>
 class FEEvaluationGpuBase
 {
 public:
@@ -82,29 +82,29 @@ public:
 // this using Shared Memory. (PIE == Parallel In Element), or actually, no
 // suffix
 
-template <int dim, int fe_degree, typename Number>
-class FEEvaluationGpu : public FEEvaluationGpuBase<dim,fe_degree,Number>
+template <int dim, int fe_degree, int n_components, typename Number>
+class FEEvaluationGpu : public FEEvaluationGpuBase<dim,fe_degree,n_components,Number>
 {
 public:
   typedef Number number_type;
   typedef typename MatrixFreeGpu<dim,Number>::GpuData data_type;
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::n_dofs_1d;
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::n_q_points_1d;
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::n_local_dofs;
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::n_q_points;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::n_dofs_1d;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::n_q_points_1d;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::n_local_dofs;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::n_q_points;
   typedef GpuArray<dim,Number> gradient_type;
 
 
 private:
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::loc2glob;
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::inv_jac;
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::JxW;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::loc2glob;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::inv_jac;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::JxW;
 
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::cellid;
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::n_cells;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::cellid;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::n_cells;
 
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::use_coloring;
-  using FEEvaluationGpuBase<dim,fe_degree,Number>::constraint_mask;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::use_coloring;
+  using FEEvaluationGpuBase<dim,fe_degree,n_components,Number>::constraint_mask;
 
 
   // internal buffers
@@ -158,12 +158,12 @@ public:
 
 };
 
-template <int dim, int fe_degree, typename Number>
-__device__ FEEvaluationGpu<dim,fe_degree,Number>::FEEvaluationGpu(int cellid,
+template <int dim, int fe_degree, int n_components, typename Number>
+__device__ FEEvaluationGpu<dim,fe_degree,n_components,Number>::FEEvaluationGpu(int cellid,
                                                                   const data_type *data,
                                                                   SharedData<dim,Number> *shdata)
   :
-  FEEvaluationGpuBase<dim,fe_degree,Number>(cellid,data),
+  FEEvaluationGpuBase<dim,fe_degree,n_components,Number>(cellid,data),
   rowlength(data->rowlength),
   rowstart(data->rowstart + cellid*rowlength)
 {
@@ -179,8 +179,8 @@ __device__ FEEvaluationGpu<dim,fe_degree,Number>::FEEvaluationGpu(int cellid,
 }
 
 
-template <int dim, int fe_degree, typename Number>
-__device__ void FEEvaluationGpu<dim,fe_degree,Number>::evaluate(const bool evaluate_val,
+template <int dim, int fe_degree, int n_components, typename Number>
+__device__ void FEEvaluationGpu<dim,fe_degree,n_components,Number>::evaluate(const bool evaluate_val,
                                                                 const bool evaluate_grad)
 {
   if(evaluate_grad)
@@ -194,16 +194,16 @@ __device__ void FEEvaluationGpu<dim,fe_degree,Number>::evaluate(const bool evalu
   __syncthreads();
 }
 
-template <int dim, int fe_degree, typename Number>
+template <int dim, int fe_degree, int n_components, typename Number>
 __device__ Number
-FEEvaluationGpu<dim,fe_degree,Number>::get_value(const unsigned int q) const
+FEEvaluationGpu<dim,fe_degree,n_components,Number>::get_value(const unsigned int q) const
 {
   return values[q];
 }
 
-template <int dim, int fe_degree, typename Number>
-__device__ FEEvaluationGpu<dim,fe_degree,Number>::gradient_type
-FEEvaluationGpu<dim,fe_degree,Number>::get_gradient(const unsigned int q) const
+template <int dim, int fe_degree, int n_components, typename Number>
+__device__ FEEvaluationGpu<dim,fe_degree,n_components,Number>::gradient_type
+FEEvaluationGpu<dim,fe_degree,n_components,Number>::get_gradient(const unsigned int q) const
 {
   // compute J^{-1} * gradients_quad[q]
   gradient_type grad;
@@ -226,15 +226,15 @@ FEEvaluationGpu<dim,fe_degree,Number>::get_gradient(const unsigned int q) const
 }
 
 
-template <int dim, int fe_degree, typename Number>
-__device__ void FEEvaluationGpu<dim,fe_degree,Number>::submit_value(const Number &val, const unsigned int q)
+template <int dim, int fe_degree, int n_components, typename Number>
+__device__ void FEEvaluationGpu<dim,fe_degree,n_components,Number>::submit_value(const Number &val, const unsigned int q)
 {
   const Number jxw = JxW[q];
   values[q] = jxw*val;
 }
 
-template <int dim, int fe_degree, typename Number>
-__device__ void FEEvaluationGpu<dim,fe_degree,Number>::submit_gradient(const gradient_type &grad, const unsigned int q)
+template <int dim, int fe_degree, int n_components, typename Number>
+__device__ void FEEvaluationGpu<dim,fe_degree,n_components,Number>::submit_gradient(const gradient_type &grad, const unsigned int q)
 {
   // compute J^{-T} * grad * det(J) *w_q
   const Number *J = &inv_jac[q];
@@ -254,8 +254,8 @@ __device__ void FEEvaluationGpu<dim,fe_degree,Number>::submit_gradient(const gra
   }
 }
 
-template <int dim, int fe_degree, typename Number>
-__device__ void FEEvaluationGpu<dim,fe_degree,Number>::integrate(const bool integrate_val,
+template <int dim, int fe_degree, int n_components, typename Number>
+__device__ void FEEvaluationGpu<dim,fe_degree,n_components,Number>::integrate(const bool integrate_val,
                                                                  const bool integrate_grad)
 {
   // TODO: merge these when both are called
@@ -274,9 +274,9 @@ __device__ void FEEvaluationGpu<dim,fe_degree,Number>::integrate(const bool inte
 }
 
 
-template <int dim, int fe_degree, typename Number>
+template <int dim, int fe_degree, int n_components, typename Number>
 template <typename LocOp>
-__device__ void FEEvaluationGpu<dim,fe_degree,Number>::apply_quad_point_operations(const LocOp *lop)
+__device__ void FEEvaluationGpu<dim,fe_degree,n_components,Number>::apply_quad_point_operations(const LocOp *lop)
 {
   const unsigned int q = (dim==1 ? threadIdx.x%n_q_points_1d :
                           dim==2 ? threadIdx.x%n_q_points_1d + n_q_points_1d*threadIdx.y :
@@ -291,8 +291,8 @@ __device__ void FEEvaluationGpu<dim,fe_degree,Number>::apply_quad_point_operatio
 // Read DoF values
 //=============================================================================
 
-template <int dim, int fe_degree, typename Number>
-__device__ void FEEvaluationGpu<dim,fe_degree,Number>::read_dof_values(const Number *src)
+template <int dim, int fe_degree, int n_components, typename Number>
+__device__ void FEEvaluationGpu<dim,fe_degree,n_components,Number>::read_dof_values(const Number *src)
 {
   const unsigned int  idx = (threadIdx.x%n_dofs_1d)
     +(dim>1 ? threadIdx.y : 0)*n_dofs_1d
@@ -315,8 +315,8 @@ __device__ void FEEvaluationGpu<dim,fe_degree,Number>::read_dof_values(const Num
 // Distribute local to global
 //=============================================================================
 
-template <int dim, int fe_degree, typename Number>
-__device__ void FEEvaluationGpu<dim,fe_degree,Number>::distribute_local_to_global(Number *dst)
+template <int dim, int fe_degree, int n_components, typename Number>
+__device__ void FEEvaluationGpu<dim,fe_degree,n_components,Number>::distribute_local_to_global(Number *dst)
 {
 #ifdef MATRIX_FREE_HANGING_NODES
   if(constraint_mask)
