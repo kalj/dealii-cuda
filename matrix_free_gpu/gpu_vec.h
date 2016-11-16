@@ -46,9 +46,12 @@ public:
   // copy constructor from CPU object
   GpuVector(const Vector<Number>& old_cpu);
 
+  GpuVector(const std::vector<Number>& old_cpu);
+
   // same for assignment
   GpuVector<Number>& operator=(const GpuVector<Number>& old);
   GpuVector<Number>& operator=(const Vector<Number>& old_cpu);
+  GpuVector<Number>& operator=(const std::vector<Number>& old_cpu);
 
   ~GpuVector();
 
@@ -56,6 +59,8 @@ public:
 
   // assigns this object in-place to a CPU object
   void copyToHost(Vector<Number>& dst) const;
+
+  void fromHost(const Number *buf, unsigned int n);
 
   // for assignment
   Vector<Number> toVector() const {

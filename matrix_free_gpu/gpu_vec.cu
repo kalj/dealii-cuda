@@ -53,6 +53,16 @@ GpuVector<Number>::GpuVector(const Vector<Number>& old_cpu)
 }
 
 template <typename Number>
+GpuVector<Number>::GpuVector(const std::vector<Number>& old_cpu)
+  : _size(old_cpu.size()) {
+  CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,_size*sizeof(Number)));
+  // const Number *cpu_data = &const_cast<Vector<Number>&>(old_cpu)[0];
+  const Number *cpu_data = &old_cpu[0];
+  CUDA_CHECK_SUCCESS(cudaMemcpy(vec_dev,cpu_data,_size*sizeof(Number),
+                                cudaMemcpyHostToDevice));
+}
+
+template <typename Number>
 GpuVector<Number>& GpuVector<Number>::operator=(const Vector<Number>& old_cpu) {
   if(_size != old_cpu.size()) {
     if(vec_dev != NULL)
@@ -66,31 +76,62 @@ GpuVector<Number>& GpuVector<Number>::operator=(const Vector<Number>& old_cpu) {
   return *this;
 }
 
-  template <typename Number>
-  GpuVector<Number>& GpuVector<Number>::operator=(const GpuVector<Number>& old) {
-    if(_size != old._size) {
-      if(vec_dev != NULL) CUDA_CHECK_SUCCESS(cudaFree(vec_dev));
-      _size = old._size;
-      CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,_size*sizeof(Number)));
-    }
-    CUDA_CHECK_SUCCESS(cudaMemcpy(vec_dev,old.vec_dev,_size*sizeof(Number),
-                                  cudaMemcpyDeviceToDevice));
-    return *this;
+template <typename Number>
+GpuVector<Number>& GpuVector<Number>::operator=(const std::vector<Number>& old_cpu) {
+  if(_size != old_cpu.size()) {
+    if(vec_dev != NULL)
+      CUDA_CHECK_SUCCESS(cudaFree(vec_dev));
+    _size = old_cpu.size();
+    CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,_size*sizeof(Number)));
   }
+  // const Number *cpu_data = &const_cast<Vector<Number>&>(old_cpu)[0];
+  const Number *cpu_data = &old_cpu[0];
+  CUDA_CHECK_SUCCESS(cudaMemcpy(vec_dev,cpu_data,_size*sizeof(Number),
+                                cudaMemcpyHostToDevice));
+  return *this;
+}
+
+template <typename Number>
+GpuVector<Number>& GpuVector<Number>::operator=(const GpuVector<Number>& old) {
+  if(_size != old._size) {
+    if(vec_dev != NULL) CUDA_CHECK_SUCCESS(cudaFree(vec_dev));
+    _size = old._size;
+    CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,_size*sizeof(Number)));
+  }
+  CUDA_CHECK_SUCCESS(cudaMemcpy(vec_dev,old.vec_dev,_size*sizeof(Number),
+                                cudaMemcpyDeviceToDevice));
+  return *this;
+}
 
 
-    template <typename Number>
-    GpuVector<Number>::~GpuVector() {
-      if(vec_dev != NULL) {
-        CUDA_CHECK_SUCCESS(cudaFree(vec_dev));
-      }
-    }
+template <typename Number>
+GpuVector<Number>::~GpuVector() {
+  if(vec_dev != NULL) {
+    CUDA_CHECK_SUCCESS(cudaFree(vec_dev));
+  }
+}
 
 template <typename Number>
 void GpuVector<Number>::copyToHost(Vector<Number>& dst) const {
   CUDA_CHECK_SUCCESS(cudaMemcpy(&dst[0],getDataRO(),_size*sizeof(Number),
                                 cudaMemcpyDeviceToHost));
 }
+
+template <typename Number>
+void GpuVector<Number>::fromHost(const Number *buf, unsigned int n)
+{
+  /* FIXME: better dimension check */
+  if(n != _size) {
+    fprintf(stderr,"ERROR: Non-matching dimensions!\n");
+    return;
+  }
+
+  cudaMemcpy(vec_dev,buf,_size*sizeof(Number),
+             cudaMemcpyHostToDevice);
+  cudaAssertNoError();
+}
+
+
 
 // resize to have the same structure as the one provided and/or clear
 // vector. note that the second argument must have a default value equal to
