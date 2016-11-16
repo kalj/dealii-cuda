@@ -93,14 +93,17 @@ public:
   // scalar product
   Number operator * (const GpuVector<Number> &v) const;
   // addition of vectors
-  void add (const GpuVector<Number> &x) { sadd(1,1,x); }
-  // scaled addition of vectors (this = this + a*x)
+  void add (const GpuVector<Number> &V) { sadd(1,1,V); }
+  // scaled addition of vectors (this = this + a*V)
   void add (const Number a,
-            const GpuVector<Number> &x) { sadd(1,a,x); }
-  // scaled addition of vectors (this = a*this + b*x)
-  void sadd (const Number a,
-             const Number b,
-             const GpuVector<Number> &x);
+            const GpuVector<Number> &V) { sadd(1,a,V); }
+  // scaled addition of vectors (this = s*this + V)
+  void sadd (const Number s,
+             const GpuVector<Number> &V) { sadd(s,1,V); }
+  // scaled addition of vectors (this = s*this + a*V)
+  void sadd (const Number s,
+             const Number a,
+             const GpuVector<Number> &V);
 
   // addition of vectors
   GpuVector<Number>& operator+=(const GpuVector<Number> &x) { sadd(1,1,x); return (*this); }
