@@ -20,6 +20,7 @@ template <typename Number>
 class GpuVector : public Subscriptor {
 public:
   typedef types::global_dof_index size_type;
+  typedef Number value_type;
 
   class DevRef {
   private:
@@ -100,6 +101,10 @@ public:
   void sadd (const Number a,
              const Number b,
              const GpuVector<Number> &x);
+
+  // addition of vectors
+  GpuVector<Number>& operator+=(const GpuVector<Number> &x) { sadd(1,1,x); return (*this); }
+
   // subtraction of vectors
   GpuVector<Number>& operator-=(const GpuVector<Number> &x) { sadd(1,-1,x); return (*this); }
 
