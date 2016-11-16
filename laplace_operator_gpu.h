@@ -36,7 +36,8 @@ public:
   void clear();
 
   void reinit (const DoFHandler<dim>  &dof_handler,
-               const ConstraintMatrix  &constraints);
+               const ConstraintMatrix  &constraints,
+               const unsigned int      level = numbers::invalid_unsigned_int);
 
   unsigned int m () const { return data.n_dofs; }
   unsigned int n () const { return data.n_dofs; }
@@ -105,7 +106,8 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::clear ()
 template <int dim, int fe_degree, typename Number>
 void
 LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_handler,
-                                                  const ConstraintMatrix  &constraints)
+                                                  const ConstraintMatrix  &constraints,
+                                                  const unsigned int      level)
 {
   typename MatrixFreeGpu<dim,Number>::AdditionalData additional_data;
 
@@ -116,7 +118,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
 #endif
 
   additional_data.parallelization_scheme = MatrixFreeGpu<dim,Number>::scheme_par_in_elem;
-
+  additional_data.level_mg_handler = level;
   additional_data.mapping_update_flags = (update_gradients | update_JxW_values |
                                           update_quadrature_points);
   data.reinit (dof_handler, constraints, QGauss<1>(fe_degree+1),

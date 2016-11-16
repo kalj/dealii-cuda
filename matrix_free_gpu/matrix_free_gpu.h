@@ -71,13 +71,15 @@ public:
   {
 
     AdditionalData (const ParallelizationScheme parallelization_scheme = scheme_par_in_elem,
-                    const bool         use_coloring = false,
-                    const UpdateFlags  mapping_update_flags  = update_gradients | update_JxW_values
+                    const bool                  use_coloring = false,
+                    const UpdateFlags           mapping_update_flags  = update_gradients | update_JxW_values,
+                    const unsigned int          level_mg_handler = numbers::invalid_unsigned_int
                     )
       :
       parallelization_scheme(parallelization_scheme),
       use_coloring (use_coloring),
-      mapping_update_flags (mapping_update_flags)
+      mapping_update_flags (mapping_update_flags),
+      level_mg_handler(level_mg_handler)
     {};
 
     ParallelizationScheme parallelization_scheme;
@@ -86,6 +88,8 @@ public:
     unsigned int        num_colors;
 
     UpdateFlags         mapping_update_flags;
+
+    unsigned int        level_mg_handler;
   };
 
 
