@@ -430,7 +430,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
     smoother_data[level].degree = 5;
     smoother_data[level].eig_cg_n_iterations = 15;
     smoother_data[level].matrix_diagonal_inverse =
-      mg_matrices[level].get_matrix_diagonal_inverse();
+      mg_matrices[level].get_diagonal_inverse();
   }
 
   // temporarily disable deallog for the setup of the preconditioner that
