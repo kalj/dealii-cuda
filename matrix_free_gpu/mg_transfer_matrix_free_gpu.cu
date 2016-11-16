@@ -736,10 +736,9 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
     level_dof_indices[l]=level_dof_indices_host[l];
   }
 
-  // FIXME: adjust for extra entry in host array? (+1)
   weights_on_refined.resize(n_levels-1);
   for(int l=0; l<n_levels-1; l++) {
-    weights_on_refined[l] = weights_host[l+1];
+    weights_on_refined[l] = weights_host[l];
   }
 
 
