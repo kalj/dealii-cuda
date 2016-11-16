@@ -47,11 +47,11 @@ DEAL_II_NAMESPACE_OPEN
  * of one of these elements. Systems with different elements or other elements
  * are currently not implemented.
  *
- * @author Martin Kronbichler
+ * @author Karl Ljungkvist
  * @date 2016
  */
 template <int dim, typename Number>
-class MGTransferMatrixFreeGpu : public MGLevelGlobalTransfer<GpuVector<Number> >
+class MGTransferMatrixFreeGpu
 {
 public:
   /**
@@ -139,17 +139,17 @@ private:
    */
   unsigned int fe_degree;
 
-  // /**
-  //  * Stores whether the element is continuous and there is a joint degree of
-  //  * freedom in the center of the 1D line.
-  //  */
-  // bool element_is_continuous;
+  /**
+   * Stores whether the element is continuous and there is a joint degree of
+   * freedom in the center of the 1D line.
+   */
+  bool element_is_continuous;
 
-  // /**
-  //  * Stores the number of components in the finite element contained in the
-  //  * DoFHandler passed to build().
-  //  */
-  // unsigned int n_components;
+  /**
+   * Stores the number of components in the finite element contained in the
+   * DoFHandler passed to build().
+   */
+  unsigned int n_components;
 
   /**
    * Stores the number of degrees of freedom on all child cells. It is
@@ -168,12 +168,13 @@ private:
    * first (found in the variable n_owned_level_cells) and then other cells
    * necessary for the transfer to the next level.
    */
-  std::vector<std::vector<unsigned int> > level_dof_indices;
+  std::vector<GpuVector<unsigned int> > level_dof_indices;
 
   /**
    * Stores the connectivity from parent to child cell numbers for each level.
    */
-  std::vector<std::vector<std::pair<unsigned int,unsigned int> > > parent_child_connect;
+  // std::vector<std::vector<std::pair<unsigned int,unsigned int> > > parent_child_connect;
+  std::vector<GpuVector<unsigned int> > child_offset_in_parent;
 
   /**
    * Stores the number of cells owned on a given process (sets the bounds for
@@ -185,12 +186,13 @@ private:
    * Holds the one-dimensional embedding (prolongation) matrix from mother
    * element to the children.
    */
-  internal::MatrixFreeFunctions::ShapeInfo<Number> shape_info;
+  // internal::MatrixFreeFunctions::ShapeInfo<Number> shape_info;
+  GpuVector<Number> shape_values;
 
   /**
    * Holds the temporary values for the tensor evaluation
    */
-  mutable AlignedVector<VectorizedArray<Number> > evaluation_data;
+  // mutable AlignedVector<VectorizedArray<Number> > evaluation_data;
 
   /**
    * For continuous elements, restriction is not additive and we need to
@@ -203,7 +205,7 @@ private:
    * Data is organized in terms of each level (outer vector) and the cells on
    * each level (inner vector).
    */
-  std::vector<AlignedVector<VectorizedArray<Number> > > weights_on_refined;
+  std::vector<GpuVector<Number> > weights_on_refined;
 
   /**
    * Stores the local indices of Dirichlet boundary conditions on cells for
@@ -227,6 +229,12 @@ private:
   void do_restrict_add(const unsigned int       from_level,
                        GpuVector<Number>       &dst,
                        const GpuVector<Number> &src) const;
+
+  template <int degree, template <int,int,typename> class loop_body>
+  void coarse_cell_loop  (const unsigned int      coarse_level,
+                          GpuVector<Number>       &dst,
+                          const GpuVector<Number> &src) const;
+
 };
 
 
