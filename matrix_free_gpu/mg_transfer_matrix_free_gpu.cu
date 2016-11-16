@@ -655,17 +655,18 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
   shape_values.resize(size_shape_values);
   shape_values.fromHost(&shape_info.shape_values_number[0],size_shape_values);
 
-
   level_dof_indices.resize(n_levels);
+
   for(int l=0; l<n_levels; l++) {
     level_dof_indices[l]=level_dof_indices_host[l];
   }
 
-
+  // FIXME: adjust for extra entry in host array? (+1)
   weights_on_refined.resize(n_levels-1);
   for(int l=0; l<n_levels-1; l++) {
-    weights_on_refined[l] = weights_host[l];
+    weights_on_refined[l] = weights_host[l+1];
   }
+
 
 
   child_offset_in_parent.resize(n_levels-1);
@@ -682,11 +683,12 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
     }
 
     child_offset_in_parent[l] = offsets;
+
   }
 
   std::vector<types::global_dof_index> dirichlet_index_vector;
 
-  dirichlet_indices.resize(n_levels); // ?
+  dirichlet_indices.resize(n_levels); // FIXME: ?
 
   if(mg_constrained_dofs != NULL) {
 
@@ -1016,6 +1018,7 @@ void MGTransferMatrixFreeGpu<dim,Number>
               (dim>1)?n_coarse_dofs_1d:1,
               (dim>2)?n_coarse_dofs_1d:1);
 
+  printf("coarse cells: %d\n",n_coarse_cells);
   dim3 gd_dim(n_coarse_cells);
 
   mg_kernel<dim, degree, loop_body<dim,degree,Number> >
@@ -1084,6 +1087,7 @@ void MGTransferMatrixFreeGpu<dim,Number>
 
   // now set constrained dofs to 0
 
+  // set_constrained_dofs(dst,to_level,0);
 
   // this->ghosted_level_vector[to_level].compress(VectorOperation::add);
   // dst = this->ghosted_level_vector[to_level];
@@ -1194,6 +1198,7 @@ MGTransferMatrixFreeGpu<dim,Number>::memory_consumption() const
 // explicit instantiation
 // #include "mg_transfer_matrix_free.inst"
 
-template class MGTransferMatrixFreeGpu<2,double>;
+// template class MGTransferMatrixFreeGpu<2,double>;
+template class MGTransferMatrixFreeGpu<3,double>;
 
 DEAL_II_NAMESPACE_CLOSE

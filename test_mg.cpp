@@ -14,8 +14,8 @@ int main(int argc, char **argv)
 {
 
   typedef double Number;
-  const unsigned int dimension = 2;
-  const unsigned int fe_degree = 1;
+  const unsigned int dimension = 3;
+  const unsigned int fe_degree = 3;
 
   Triangulation<dimension>               triangulation;
   FE_Q<dimension>                        fe(fe_degree);
@@ -23,7 +23,7 @@ int main(int argc, char **argv)
 
   GridGenerator::subdivided_hyper_cube (triangulation, 4);
 
-  triangulation.refine_global(1);
+  triangulation.refine_global(4);
 
 
   dof_handler.distribute_dofs (fe);
@@ -58,7 +58,10 @@ int main(int argc, char **argv)
     v2.reinit(dof_handler.n_dofs(level));
     v3.reinit(dof_handler.n_dofs(level));
     for (unsigned int i=0; i<v1.size(); ++i)
-      v1[i] = (double)rand()/RAND_MAX;
+      v1[i] = 3;
+      // v1[i] = (double)rand()/RAND_MAX;
+
+    // std::cout << "Input: " << v1 << std::endl;
 
     v1_dev = v1;
     v2_dev = v2;
@@ -67,6 +70,9 @@ int main(int argc, char **argv)
 
     v1_cpy = v1;
     transfer_ref.prolongate(level, v3, v1_cpy);
+
+    // std::cout << "Output (cpu): " << v3 << std::endl;
+    // std::cout << "Output (gpu): " << v2 << std::endl;
 
     v2_cpy = v2;
     v3 -= v2_cpy;
@@ -84,6 +90,8 @@ int main(int argc, char **argv)
     v3.reinit(dof_handler.n_dofs(level-1));
     for (unsigned int i=0; i<v1.size(); ++i)
       v1[i] = (double)rand()/RAND_MAX;
+
+
 
     v1_dev = v1;
     v2_dev = v2;
