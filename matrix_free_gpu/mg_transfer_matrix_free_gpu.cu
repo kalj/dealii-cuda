@@ -313,7 +313,7 @@ namespace
       fe_name[template_starts+1] = '1';
     }
     std_cxx11::shared_ptr<FiniteElement<1> > fe_1d
-      (FETools::get_fe_from_name<1>(fe_name));
+      (FETools::get_fe_by_name<1,1>(fe_name));
     const FiniteElement<1> &fe = *fe_1d;
     unsigned int n_child_dofs_1d = numbers::invalid_unsigned_int;
 
@@ -599,10 +599,85 @@ namespace
 
 
 template <int dim, typename Number>
+void MGTransferMatrixFreeGpu<dim,Number>::setup_copy_indices(const DoFHandler<dim,dim>  &mg_dof)
+{
+
+  std::vector<std::vector<std::pair<types::global_dof_index, types::global_dof_index> > > copy_indices;
+  std::vector<std::vector<std::pair<types::global_dof_index, types::global_dof_index> > > copy_indices_global_mine;
+  std::vector<std::vector<std::pair<types::global_dof_index, types::global_dof_index> > > copy_indices_level_mine;
+
+  internal::fill_copy_indices<dim,dim> (mg_dof, mg_constrained_dofs, copy_indices,
+                                        copy_indices_global_mine, copy_indices_level_mine);
+
+  const unsigned int nlevels = mg_dof.get_triangulation().n_global_levels();
+
+
+  Assert((copy_indices_global_mine.size() == 0) &&
+         (copy_indices_level_mine.size() == 0),
+         ExcMessage("Only implemented for non-distributed case"));
+
+  for(int i=0; i<nlevels; ++i) {
+    Assert((copy_indices[i].size() == copy_indices_global_mine[i].size()) &&
+           (copy_indices[i].size() == copy_indices_level_mine[i].size()),
+           ExcMessage("Length mismatch of copy_indices* subarrays"));
+    for(int j=0; j<copy_indices[i].size(); ++j) {
+      Assert((copy_indices[i][j] == copy_indices_global_mine[i][j]) &&
+             (copy_indices[i][j] == copy_indices_level_mine[i][j]),
+             ExcMessage("content mismatch of copy_indices* mappings"));
+    }
+  }
+
+  // all set, know we can safely throw away the latter two arrays
+
+  this->copy_indices.resize(nlevels);
+
+  for(int i=0; i<nlevels; ++i) {
+    const unsigned int nmappings = copy_indices[i].size();
+    std::vector<int> global_indices(nmappings);
+    std::vector<int> level_indices(nmappings);
+
+    for(int j=0; j<nmappings; ++j) {
+      global_indices[j] = copy_indices[i][j].first;
+      level_indices[j] = copy_indices[i][j].second;
+    }
+
+    this->copy_indices[i].global_indices = global_indices;
+    this->copy_indices[i].level_indices = level_indices;
+  }
+
+
+  // check if we can run a plain copy operation between the global DoFs and
+  // the finest level.
+  perform_plain_copy =
+    (copy_indices.back().size() == mg_dof.locally_owned_dofs().n_elements())
+    &&
+    (mg_dof.locally_owned_dofs().n_elements() ==
+     mg_dof.locally_owned_mg_dofs(mg_dof.get_triangulation().n_global_levels()-1).n_elements());
+
+  if (perform_plain_copy)
+    {
+      // AssertDimension(copy_indices_global_mine.back().size(), 0);
+      // AssertDimension(copy_indices_level_mine.back().size(), 0);
+
+      // check whether there is a renumbering of degrees of freedom on
+      // either the finest level or the global dofs, which means that we
+      // cannot apply a plain copy
+      for (unsigned int i=0; i<copy_indices.back().size(); ++i)
+        if (copy_indices.back()[i].first != copy_indices.back()[i].second)
+          {
+            perform_plain_copy = false;
+            break;
+          }
+    }
+
+}
+
+
+template <int dim, typename Number>
 void MGTransferMatrixFreeGpu<dim,Number>::build
 (const DoFHandler<dim,dim>  &mg_dof)
 {
-  // this->fill_and_communicate_copy_indices(mg_dof);
+  setup_copy_indices(mg_dof);
 
   const Triangulation<dim> &tria = mg_dof.get_triangulation();
 
@@ -1179,6 +1254,124 @@ void MGTransferMatrixFreeGpu<dim,Number>::set_constrained_dofs(GpuVector<Number>
   cudaAssertNoError();
 }
 
+template <typename Number>
+__global__ void copy_with_indices_kernel(Number *dst, const Number *src, const int *dst_indices, const int *src_indices, int n)
+{
+  const int i = threadIdx.x + blockIdx.x*blockDim.x;
+  if(i<n) {
+    dst[dst_indices[i]] = src[src_indices[i]];
+  }
+}
+
+template <typename Number>
+void copy_with_indices(GpuVector<Number> &dst, const GpuVector<Number> &src,
+                       const internal::GpuList<int> &dst_indices, const internal::GpuList<int> &src_indices)
+{
+  const int n = dst_indices.size();
+  const int blocksize = 256;
+  const dim3 block_dim = dim3(blocksize);
+  const dim3 grid_dim = dim3(1 + (n-1)/blocksize);
+  copy_with_indices_kernel<<<grid_dim, block_dim >>>(dst.getData(),src.getDataRO(),dst_indices.getDataRO(),src_indices.getDataRO(),n);
+}
+
+template <int dim, typename Number>
+template <int spacedim>
+void
+MGTransferMatrixFreeGpu<dim,Number>::copy_to_mg (const DoFHandler<dim,spacedim>    &mg_dof,
+                                                 MGLevelObject<GpuVector<Number> > &dst,
+                                                 const GpuVector<Number>           &src) const
+{
+  AssertIndexRange(dst.max_level(), mg_dof_handler.get_triangulation().n_global_levels());
+  AssertIndexRange(dst.min_level(), dst.max_level()+1);
+
+  for (unsigned int level=dst.min_level();
+       level<=dst.max_level(); ++level)
+  {
+    unsigned int n = mg_dof.n_dofs (level);
+    dst[level].reinit(n);
+  }
+
+
+#ifdef DEBUG_OUTPUT
+  std::cout << "copy_to_mg src " << src.l2_norm() << std::endl;
+#endif
+
+  if (perform_plain_copy)
+    {
+      // if the finest multigrid level covers the whole domain (i.e., no
+      // adaptive refinement) and the numbering of the finest level DoFs and
+      // the global DoFs are the same, we can do a plain copy
+      AssertDimension(dst[dst.max_level()].size(), src.size());
+
+      dst[dst.max_level()] = src;
+
+      return;
+    }
+
+  for (unsigned int level=dst.max_level(); level >= dst.min_level(); --level)
+    {
+      GpuVector<Number> &dst_level = dst[level];
+
+      copy_with_indices(dst_level,src,
+                        copy_indices[level].level_indices,
+                        copy_indices[level].global_indices);
+
+#ifdef DEBUG_OUTPUT
+      std::cout << "copy_to_mg dst " << level << " " << dst_level.l2_norm() << std::endl;
+#endif
+    }
+}
+
+
+
+template <int dim, typename Number>
+template <int spacedim>
+void
+MGTransferMatrixFreeGpu<dim,Number>::copy_from_mg (const DoFHandler<dim,spacedim>         &mg_dof,
+                                                   GpuVector<Number>                      &dst,
+                                                   const MGLevelObject<GpuVector<Number>> &src) const
+{
+  AssertIndexRange(src.max_level(), mg_dof_handler.get_triangulation().n_global_levels());
+  AssertIndexRange(src.min_level(), src.max_level()+1);
+
+  if (perform_plain_copy)
+    {
+      AssertDimension(dst.size(), src[src.max_level()].size());
+      dst = src[src.max_level()];
+      return;
+    }
+
+  dst = 0;
+  for (unsigned int level=src.min_level(); level<=src.max_level(); ++level)
+    {
+#ifdef DEBUG_OUTPUT
+      std::cout << "copy_from_mg src " << level << " " << src[level].l2_norm() << std::endl;
+#endif
+
+      const GpuVector<Number> &src_level = src[level];
+
+      copy_with_indices(dst,src_level,
+                        copy_indices[level].global_indices,
+                        copy_indices[level].level_indices);
+
+#ifdef DEBUG_OUTPUT
+        std::cout << "copy_from_mg level=" << level << " " << dst.l2_norm() << std::endl;
+#endif
+    }
+}
+
+
+template <int dim, typename Number>
+template <int spacedim>
+void
+MGTransferMatrixFreeGpu<dim,Number>::copy_from_mg_add (const DoFHandler<dim,spacedim>         &mg_dof,
+                                                       GpuVector<Number>                      &dst,
+                                                       const MGLevelObject<GpuVector<Number>> &src) const
+{
+  ExcNotImplemented();
+}
+
+
 
 template <int dim, typename Number>
 std::size_t
@@ -1195,10 +1388,56 @@ MGTransferMatrixFreeGpu<dim,Number>::memory_consumption() const
 }
 
 
-// explicit instantiation
+//=============================================================================
+// explicit instantiations
+//=============================================================================
+
 // #include "mg_transfer_matrix_free.inst"
 
 // template class MGTransferMatrixFreeGpu<2,double>;
 template class MGTransferMatrixFreeGpu<3,double>;
+
+template void
+MGTransferMatrixFreeGpu<3,double>::copy_to_mg (const DoFHandler<3>&,
+                                               MGLevelObject<GpuVector<double> >&,
+                                               const GpuVector<double>&) const;
+
+template void
+MGTransferMatrixFreeGpu<3,double>::copy_from_mg (const DoFHandler<3>&,
+                                                 GpuVector<double>&,
+                                                 const MGLevelObject<GpuVector<double> >&) const;
+
+
+//=============================================================================
+// FIXME: is this really the only way to do this?
+
+template <typename VectorType>
+MGTransferBase<VectorType>::~MGTransferBase()
+{}
+
+
+template <typename VectorType>
+MGMatrixBase<VectorType>::~MGMatrixBase()
+{}
+
+
+template <typename VectorType>
+MGSmootherBase<VectorType>::~MGSmootherBase()
+{}
+
+
+template <typename VectorType>
+MGCoarseGridBase<VectorType>::~MGCoarseGridBase()
+{}
+template class MGTransferBase< GpuVector<double> >;
+template class MGMatrixBase<GpuVector<double> >;
+template class MGSmootherBase< GpuVector<double> >;
+template class MGCoarseGridBase< GpuVector<double> >;
+
+
+//=============================================================================
+
+
+
 
 DEAL_II_NAMESPACE_CLOSE

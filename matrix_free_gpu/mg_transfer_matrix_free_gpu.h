@@ -62,6 +62,12 @@ namespace internal {
     std::size_t memory_consumption() const;
 
   };
+
+  struct IndexMapping {
+    GpuList<int> global_indices;
+    GpuList<int> level_indices;
+  };
+
 }
 
 /*!@addtogroup mg */
@@ -83,7 +89,7 @@ namespace internal {
  * @date 2016
  */
 template <int dim, typename Number>
-class MGTransferMatrixFreeGpu
+class MGTransferMatrixFreeGpu : public MGTransferBase<GpuVector<Number> >
 {
 public:
   /**
@@ -151,6 +157,44 @@ public:
   virtual void restrict_and_add (const unsigned int from_level,
                                  GpuVector<Number>       &dst,
                                  const GpuVector<Number> &src) const;
+
+  /**
+   * Transfer from multi-level vector to normal vector.
+   *
+   * Copies data from active portions of an MGVector into the respective
+   * positions of a <tt>Vector<number></tt>. In order to keep the result
+   * consistent, constrained degrees of freedom are set to zero.
+   */
+  template <int spacedim>
+  void
+  copy_to_mg (const DoFHandler<dim,spacedim>    &mg_dof,
+              MGLevelObject<GpuVector<Number> > &dst,
+              const GpuVector<Number>           &src) const;
+
+  /**
+   * Transfer from multi-level vector to normal vector.
+   *
+   * Copies data from active portions of an MGVector into the respective
+   * positions of a <tt>Vector<number></tt>. In order to keep the result
+   * consistent, constrained degrees of freedom are set to zero.
+   */
+  template <int spacedim>
+  void
+  copy_from_mg (const DoFHandler<dim,spacedim>         &mg_dof,
+                GpuVector<Number>                      &dst,
+                const MGLevelObject<GpuVector<Number>> &src) const;
+
+  /**
+   * Add a multi-level vector to a normal vector.
+   *
+   * Works as the previous function, but probably not for continuous elements.
+   */
+  template <int spacedim>
+  void
+  copy_from_mg_add (const DoFHandler<dim,spacedim>         &mg_dof,
+                    GpuVector<Number>                      &dst,
+                    const MGLevelObject<GpuVector<Number>> &src) const;
+
 
   /**
    * Finite element does not provide prolongation matrices.
@@ -224,9 +268,17 @@ private:
   GpuVector<Number> shape_values;
 
   /**
-   * Holds the temporary values for the tensor evaluation
+   * Holds mappings between global DoFs and level-local DoFs, stored in a structure-of-array format
    */
-  // mutable AlignedVector<VectorizedArray<Number> > evaluation_data;
+  std::vector<internal::IndexMapping> copy_indices;
+
+  /**
+   * Stores whether the copy operation from the global to the level vector is
+   * actually a plain copy to the finest level. This means that the grid has
+   * no adaptive refinement and the numbering on the finest multigrid level is
+   * the same as in the global case.
+   */
+  bool perform_plain_copy;
 
   /**
    * For continuous elements, restriction is not additive and we need to
@@ -248,6 +300,11 @@ private:
    */
   // std::vector<std::vector<std::vector<unsigned short> > > dirichlet_indices;
   std::vector<internal::GpuList<unsigned int> > dirichlet_indices;
+
+  /**
+   * Internal function for setting up data structures for solution transfer
+   */
+  void setup_copy_indices(const DoFHandler<dim,dim>  &mg_dof);
 
   /**
    * Performs templated prolongation operation
