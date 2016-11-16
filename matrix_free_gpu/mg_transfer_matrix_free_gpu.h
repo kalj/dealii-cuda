@@ -31,6 +31,38 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+namespace internal {
+
+  template <typename T>
+  class GpuList {
+  private:
+    unsigned int n;
+    T *values;
+  public:
+    GpuList();
+
+    GpuList(const GpuList<T> &other);
+
+    GpuList(const std::vector<T> &host_arr);
+
+    ~GpuList();
+
+    void resize(unsigned int newsize);
+
+    GpuList<T> & operator=(const GpuList<T> &other);
+
+    GpuList<T> & operator=(const std::vector<T> &host_arr);
+
+    void clear();
+
+    unsigned int size() const;
+
+    const T* getDataRO() const;
+
+    std::size_t memory_consumption() const;
+
+  };
+}
 
 /*!@addtogroup mg */
 /*@{*/
@@ -168,13 +200,15 @@ private:
    * first (found in the variable n_owned_level_cells) and then other cells
    * necessary for the transfer to the next level.
    */
-  std::vector<GpuVector<unsigned int> > level_dof_indices;
+
+  // FIXME: change to GpuVector or similar class
+  std::vector<internal::GpuList<unsigned int> > level_dof_indices;
 
   /**
    * Stores the connectivity from parent to child cell numbers for each level.
    */
   // std::vector<std::vector<std::pair<unsigned int,unsigned int> > > parent_child_connect;
-  std::vector<GpuVector<unsigned int> > child_offset_in_parent;
+  std::vector<internal::GpuList<unsigned int> > child_offset_in_parent;
 
   /**
    * Stores the number of cells owned on a given process (sets the bounds for
@@ -230,10 +264,12 @@ private:
                        GpuVector<Number>       &dst,
                        const GpuVector<Number> &src) const;
 
-  template <int degree, template <int,int,typename> class loop_body>
+  template <template <int,int,typename> class loop_body, int degree>
   void coarse_cell_loop  (const unsigned int      coarse_level,
                           GpuVector<Number>       &dst,
                           const GpuVector<Number> &src) const;
+
+  SmartPointer< const MGConstrainedDoFs, MGTransferMatrixFreeGpu<dim,Number> > 	mg_constrained_dofs;
 
 };
 

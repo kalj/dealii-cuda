@@ -18,6 +18,7 @@
 #include <deal.II/base/function.h>
 
 // #include <deal.II/lac/gpu_vector.h>
+#include "atomic.cuh"
 #include "gpu_vec.h"
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/tria_iterator.h>
@@ -35,6 +36,107 @@
 #include <algorithm>
 
 DEAL_II_NAMESPACE_OPEN
+
+
+namespace internal {
+
+  template <typename T>
+  GpuList<T>::GpuList()
+  {
+    n = 0;
+    values = NULL;
+  }
+
+  template <typename T>
+  GpuList<T>::GpuList(const GpuList<T> &other)
+  {
+    n = other.size();
+    cudaMalloc(&values,n*sizeof(T));
+    cudaMemcpy(values,other.values,n*sizeof(T),
+               cudaMemcpyDeviceToDevice);
+  }
+
+  template <typename T>
+  GpuList<T>::GpuList(const std::vector<T> &host_arr)
+  {
+    n = host_arr.size();
+    cudaMalloc(&values,n*sizeof(T));
+    cudaMemcpy(values,&host_arr[0],n*sizeof(T),
+               cudaMemcpyHostToDevice);
+  }
+
+  template <typename T>
+  GpuList<T>::~GpuList()
+  {
+    if(values != NULL) {
+      cudaFree(values);
+    }
+  }
+
+  template <typename T>
+  void GpuList<T>::resize(unsigned int newsize)
+  {
+    if(n != newsize)
+    {
+      cudaFree(values);
+
+      n = newsize;
+      cudaMalloc(&values,n);
+    }
+  }
+
+  template <typename T>
+  GpuList<T>& GpuList<T>::operator=(const GpuList<T> &other)
+  {
+    resize(other.size());
+
+    cudaMemcpy(values,other.values,n*sizeof(T),
+               cudaMemcpyDeviceToDevice);
+
+    return *this;
+  }
+
+  template <typename T>
+  GpuList<T>& GpuList<T>::operator=(const std::vector<T> &host_arr)
+  {
+    resize(host_arr.size());
+
+    cudaMemcpy(values,&host_arr[0],n*sizeof(T),
+               cudaMemcpyHostToDevice);
+
+    return *this;
+  }
+
+  template <typename T>
+  void GpuList<T>::clear()
+  {
+    n = 0;
+    if(values != NULL) {
+      cudaFree(values);
+      values = NULL;
+    }
+  }
+
+  template <typename T>
+  unsigned int GpuList<T>::size() const
+  {
+    return n;
+  }
+
+  template <typename T>
+  const T* GpuList<T>::getDataRO() const
+  {
+    return values;
+  }
+
+  template <typename T>
+  std::size_t GpuList<T>::memory_consumption() const
+  {
+    return sizeof(T)*n;
+  }
+
+}
+
 
 
 template<int dim, typename Number>
@@ -159,14 +261,37 @@ namespace
 
 
   template <int dim, typename Number>
-  void setup_shape_info(internal::MatrixFreeFunctions::ShapeInfo<Number> &shape_info,
-                        const FiniteElement<dim> &mg_fe,
-                        unsigned int &n_components,
-                        unsigned int &fe_degree,
-                        bool &element_is_continuous,
-                        unsigned int &n_child_dofs_1d ,
-                        unsigned int &n_child_cell_dofs)
+  void setup_data_structures(
+                             /*
+                               Finite element info
+                             */
+                             internal::MatrixFreeFunctions::ShapeInfo<Number> &shape_info,
+                             unsigned int &n_components,
+                             unsigned int &fe_degree,
+                             bool &element_is_continuous,
+                             // unsigned int &n_child_dofs_1d ,
+                             unsigned int &n_child_cell_dofs,
+                             /*
+                               DoF indices
+                             */
+
+                             std::vector<std::vector<unsigned int>> &level_dof_indices,
+                             std::vector<std::vector<std::pair<unsigned int,unsigned int> > > &parent_child_connect,
+                             std::vector<unsigned int> &n_owned_level_cells,
+                             std::vector<std::vector<std::vector<unsigned short> > > &dirichlet_indices,
+                             const Triangulation<dim> &tria,
+                             const DoFHandler<dim> &mg_dof,
+                             SmartPointer< const MGConstrainedDoFs, MGTransferMatrixFreeGpu<dim,Number> > 	mg_constrained_dofs,
+
+                             /*
+                               Weights
+                             */
+                             std::vector<std::vector<Number> > &weights_on_refined,
+                             const unsigned int                 n_levels)
   {
+
+    const FiniteElement<dim> &mg_fe = mg_dof.get_fe();
+
     // step 1.1: create a 1D copy of the finite element from FETools where we
     // substitute the template argument
     AssertDimension(mg_fe.n_base_elements(), 1);
@@ -235,25 +360,11 @@ namespace
                           fe.get_prolongation_matrix(c)(renumbering[j],renumbering[i]))
                  < std::max(2.*(double)std::numeric_limits<Number>::epsilon(),1e-12),
                  ExcInternalError());
-  }
 
 
+  // -------------- 2. Extract and match dof indices between child and parent
 
-  template <int dim, typename Number>
-  void setup_dof_indices(std::vector<std::vector<unsigned int>> &level_dof_indices,
-                         std::vector<std::vector<std::pair<unsigned int,unsigned int> > > &parent_child_connect,
-                         std::vector<unsigned int> &n_owned_level_cells,
-                         std::vector<std::vector<std::vector<unsigned short> > > &dirichlet_indices,
-                         // std::vector<std::vector<Number> > &ghosted_level_vector,
-                         const Triangulation<dim> &tria,
-                         const DoFHandler<dim> &mg_dof,
-                         const unsigned int n_levels,
-                         const unsigned int n_child_cell_dofs,
-                         const MGConstrainedDoFs &mg_constrained_dofs)
 
-                         // const FiniteElement<dim> &mg_fe,
-                         // const unsigned int fe_degree)
-  {
     level_dof_indices.resize(n_levels);
     parent_child_connect.resize(n_levels-1);
     n_owned_level_cells.resize(n_levels-1);
@@ -344,25 +455,25 @@ namespace
                   dirichlet_indices[level][child_index].push_back(i);
           }
         }
-        if (!cell_is_remote)
-        {
+        // if (!cell_is_remote)
+        // {
           AssertIndexRange(static_cast<unsigned int>(cell->index()),
                            coarse_level_indices[level-1].size());
           coarse_level_indices[level-1][cell->index()] = counter++;
-        }
+        // }
 
         // step 2.4: include indices for the coarsest cells. we still insert
         // the indices as if they were from a child in order to use the same
         // code (the coarsest level does not matter much in terms of memory,
         // so we gain in code simplicity)
-        if (level == 1 && !cell_is_remote)
+        if (level == 1)// && !cell_is_remote)
         {
           cell->get_mg_dof_indices(local_dof_indices);
 
           const IndexSet &owned_level_dofs_l0 = mg_dof.locally_owned_mg_dofs(0);
-          for (unsigned int i=0; i<local_dof_indices.size(); ++i)
-            if (!owned_level_dofs_l0.is_element(local_dof_indices[i]))
-              ghosted_level_dofs_l0.push_back(local_dof_indices[i]);
+          // for (unsigned int i=0; i<local_dof_indices.size(); ++i)
+            // if (!owned_level_dofs_l0.is_element(local_dof_indices[i]))
+              // ghosted_level_dofs_l0.push_back(local_dof_indices[i]);
 
           const std::size_t start_index = global_level_dof_indices_l0.size();
           global_level_dof_indices_l0.resize(start_index+n_child_cell_dofs,
@@ -428,16 +539,11 @@ namespace
 
       }
     }
-  }
 
-  template <int dim, typename Number>
-  void setup_weights(std::vector<std::vector<Number> > &weights_on_refined,
-                     const std::vector<std::vector<unsigned int > > &level_dof_indices,
-                     const std::vector<unsigned int>   &n_owned_level_cells,
-                     const unsigned int                 n_child_cell_dofs,
-                     const unsigned int                 n_child_dofs_1d,
-                     const unsigned int                 n_levels)
-  {
+
+    // ------------------------ 3. compute weights to make restriction additive
+    //
+
     std::vector<Number> level_vector;
 
     // get the valence of the individual components and compute the weights as
@@ -446,8 +552,8 @@ namespace
 
     for (unsigned int level = 1; level<n_levels; ++level)
     {
-      level_vector.resize(n_owned_level_cells[level]);
-      level_vector = 0;
+      level_vector.resize(n_owned_level_cells[level],0);
+
       for (unsigned int c=0; c<n_owned_level_cells[level-1]; ++c)
         for (unsigned int j=0; j<n_child_cell_dofs; ++j)
           level_vector[level_dof_indices[level][n_child_cell_dofs*c+j]] += Number(1.);
@@ -485,13 +591,12 @@ template <int dim, typename Number>
 void MGTransferMatrixFreeGpu<dim,Number>::build
 (const DoFHandler<dim,dim>  &mg_dof)
 {
-  this->fill_and_communicate_copy_indices(mg_dof);
+  // this->fill_and_communicate_copy_indices(mg_dof);
 
-  const Triangulation<dim> tria& = mg_dof.get_triangulation();
+  const Triangulation<dim> &tria = mg_dof.get_triangulation();
 
   std::vector<std::vector<Number>> weights_host;
   std::vector<std::vector<unsigned int>> level_dof_indices_host;
-  // std::vector<vector<Number>>       ghosted_level_vector;
   internal::MatrixFreeFunctions::ShapeInfo<Number> shape_info;
   std::vector<std::vector<std::pair<unsigned int,unsigned int> > > parent_child_connect;
 
@@ -502,39 +607,33 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
   // lexicographically. We distinguish FE_Q elements and FE_DGQ elements
 
   // ---------------------------- 1. Extract 1D info about the finite element
-  setup_shape_info<dim> (shape_info,                  // write
-                         n_components,                // write
-                         fe_degree,                   // write
-                         element_is_continuous,       // write
-                         n_child_dofs_1d,             // write
-                         n_child_cell_dofs,           // write
-                         mg_dof.get_fe()              // read
-                         );
+  setup_data_structures<dim> (
+                              /*
+                                Finite element info
+                               */
+                              shape_info,                  // write
+                              n_components,                // write
+                              fe_degree,                   // write
+                              element_is_continuous,       // write
+                              // n_child_dofs_1d,             // write
+                              n_child_cell_dofs,           // write
 
-  // -------------- 2. Extract and match dof indices between child and parent
-  setup_dof_indices<dim> (level_dof_indices_host, // write
-                          parent_child_connect,   // write
-                          n_owned_level_cells,    // write
-                          dirichlet_indices,      // write
-                          level_vector_host,      // write
-                          mg_dof,                 // read
-                          tria,                   // read ..
-                          n_levels,
-                          n_child_cell_dofs,
-                          this->mg_constrained_dofs
-                          );
+                              /*
+                                DoF indices
+                               */
+                              level_dof_indices_host, // write
+                              parent_child_connect,   // write
+                              n_owned_level_cells,    // write
+                              dirichlet_indices,      // write
+                              tria,                   // read ..
+                              mg_dof,                 // read
+                              mg_constrained_dofs,
 
-
-
-  // ------------------------ 3. compute weights to make restriction additive
-  //
-  setup_weights<dim> (weights_on_refined_host, // write
-                      level_dof_indices_host,
-                      level_vector_host,       // write
-                      n_owned_level_cells,     // read
-                      n_child_cell_dofs,       // ...
-                      n_child_dofs_1d,
-                      n_levels);
+                              /*
+                                Weights
+                               */
+                              weights_host, // write
+                              n_levels);
 
 
   // questions:
@@ -547,6 +646,7 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
   // transfer stuff from host to device
   //---------------------------------------------------------------------------
 
+  const unsigned int size_shape_values = shape_info.shape_values_number.size();
   shape_values.resize(size_shape_values);
   shape_values.fromHost(&shape_info.shape_values_number[0],size_shape_values);
 
@@ -559,13 +659,13 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
 
     level_dof_indices[l]=level_dof_indices_host[l];
 
-    weights_on_refined[l] = weights_on_refined_host[l];
+    weights_on_refined[l] = weights_host[l];
 
     offsets.resize(n_owned_level_cells[l]);
 
     for(int c=0; c<n_owned_level_cells[l]; ++c) {
       const unsigned int shift = compute_shift_within_children<dim> (parent_child_connect[l][c].second,
-                                                                     degree, degree);
+                                                                     fe_degree, fe_degree);
       offsets[c] = parent_child_connect[l][c].first*n_child_cell_dofs + shift;
     }
 
@@ -583,18 +683,19 @@ template <int dim, int fe_degree, typename Number>
 class MGTransferBody
 {
 protected:
-  const unsigned int n_coarse = fe_degree+1;
-  const unsigned int n_fine = fe_degree*2+1;
-  const unsigned int M = 2;
+  static const unsigned int n_coarse = fe_degree+1;
+  static const unsigned int n_fine = fe_degree*2+1;
+  static const unsigned int M = 2;
   Number *buf;
   const Number *weights;
   const Number *shape_values;
   const unsigned int *dof_indices_coarse;
   const unsigned int *dof_indices_fine;
 
-  MGTransferBody(Number *buf, const Number *weights, const Number *shape_values,
-                 const unsigned int *dof_indices_coarse,const unsigned int *dof_indices_fine,
-                 const unsigned cellid)
+  __device__ MGTransferBody(Number *buf, const Number *weights,
+                            const Number *shape_values,
+                            const unsigned int *dof_indices_coarse,
+                            const unsigned int *dof_indices_fine)
     : buf(buf), weights(weights), shape_values(shape_values),
       dof_indices_coarse(dof_indices_coarse), dof_indices_fine(dof_indices_fine) {}
 
@@ -674,10 +775,6 @@ protected:
     const unsigned int M2 = (dim>0?M:1);
     const unsigned int M3 = (dim>1?M:1);
 
-    const bool last_thread_x = threadIdx.x==(n_coarse-1);
-    const bool last_thread_y = threadIdx.y==(n_coarse-1);
-    const bool last_thread_z = threadIdx.z==(n_coarse-1);
-
 #pragma unroll
     for(int m3=0; m3<M3; ++m3) {
 #pragma unroll
@@ -704,10 +801,18 @@ protected:
 template <int dim, int fe_degree, typename Number>
 class MGProlongateBody : public MGTransferBody<dim,fe_degree,Number>
 {
+  using MGTransferBody<dim,fe_degree,Number>::M;
+  using MGTransferBody<dim,fe_degree,Number>::n_coarse;
+  using MGTransferBody<dim,fe_degree,Number>::n_fine;
+  using MGTransferBody<dim,fe_degree,Number>::dof_indices_coarse;
+  using MGTransferBody<dim,fe_degree,Number>::dof_indices_fine;
+  using MGTransferBody<dim,fe_degree,Number>::buf;
+  using MGTransferBody<dim,fe_degree,Number>::shape_values;
+  using MGTransferBody<dim,fe_degree,Number>::weights;
 private:
   __device__ void read_coarse(const Number *vec)
   {
-    const unsigned int fine_idx = threadIdx.x + n_fine*(threadIdx.y + n_fine*threadIdx.z);
+    const unsigned int idx = threadIdx.x + n_fine*(threadIdx.y + n_fine*threadIdx.z);
     buf[idx] = vec[dof_indices_coarse[idx]];
   }
 
@@ -731,9 +836,12 @@ private:
   }
 
 public:
-  MGProlongateBody(Number *buf, const Number *weights, const Number *shape_values,
-                 const unsigned int *dof_indices_coarse,const unsigned int *dof_indices_fine)
-  : MGTransferBody(buf, weights, shape_values, dof_indices_coarse, dof_indices_fine) {}
+  __device__ MGProlongateBody(Number *buf, const Number *weights,
+                              const Number *shape_values,
+                              const unsigned int *dof_indices_coarse,
+                              const unsigned int *dof_indices_fine)
+    : MGTransferBody<dim,fe_degree,Number>(buf, weights, shape_values,
+                                           dof_indices_coarse, dof_indices_fine) {}
 
   __device__ void run(Number *dst, const Number *src)
   {
@@ -746,13 +854,13 @@ public:
     read_coarse(src);
     __syncthreads();
 
-    reduce<PROLONGATION,0>(my_shvals);
+    this->template reduce<PROLONGATION,0>(my_shvals);
     __syncthreads();
     if(dim>1) {
-      reduce<PROLONGATION,1>(my_shvals);
+      this->template reduce<PROLONGATION,1>(my_shvals);
       __syncthreads();
       if(dim>2) {
-        reduce<PROLONGATION,2>(my_shvals);
+        this->template reduce<PROLONGATION,2>(my_shvals);
         __syncthreads();
       }
     }
@@ -768,6 +876,14 @@ public:
 template <int dim, int fe_degree, typename Number>
 class MGRestrictBody : public MGTransferBody<dim,fe_degree,Number>
 {
+  using MGTransferBody<dim,fe_degree,Number>::M;
+  using MGTransferBody<dim,fe_degree,Number>::n_coarse;
+  using MGTransferBody<dim,fe_degree,Number>::n_fine;
+  using MGTransferBody<dim,fe_degree,Number>::dof_indices_coarse;
+  using MGTransferBody<dim,fe_degree,Number>::dof_indices_fine;
+  using MGTransferBody<dim,fe_degree,Number>::buf;
+  using MGTransferBody<dim,fe_degree,Number>::shape_values;
+  using MGTransferBody<dim,fe_degree,Number>::weights;
 private:
   __device__ void read_fine(const Number *vec)
   {
@@ -798,9 +914,12 @@ private:
 
 public:
 
-  MGRestrictBody(Number *buf, const Number *weights, const Number *shape_values,
-                 const unsigned int *dof_indices_coarse,const unsigned int *dof_indices_fine)
-  : MGTransferBody(buf, weights, shape_values, dof_indices_coarse, dof_indices_fine) {}
+  __device__ MGRestrictBody(Number *buf, const Number *weights,
+                            const Number *shape_values,
+                            const unsigned int *dof_indices_coarse,
+                            const unsigned int *dof_indices_fine)
+    : MGTransferBody<dim,fe_degree,Number>(buf, weights, shape_values,
+                                           dof_indices_coarse, dof_indices_fine) {}
 
   __device__ void run(Number *dst, const Number *src)
   {
@@ -813,13 +932,13 @@ public:
     weigh_values(weights);
     __syncthreads();
 
-    reduce<RESTRICTION,0>(my_shvals);
+    this->template reduce<RESTRICTION,0>(my_shvals);
     __syncthreads();
     if(dim>1) {
-      reduce<RESTRICTION,1>(my_shvals);
+      this->template reduce<RESTRICTION,1>(my_shvals);
       __syncthreads();
       if(dim>2) {
-        reduce<RESTRICTION,2>(my_shvals);
+        this->template reduce<RESTRICTION,2>(my_shvals);
         __syncthreads();
       }
     }
@@ -832,9 +951,10 @@ public:
 template <int dim, int degree, typename loop_body, typename Number>
 __global__ void mg_kernel (Number *dst, const Number *src, const Number *weights, const Number *shape_values,
                            const unsigned int *dof_indices_coarse, const unsigned int *dof_indices_fine,
-                           const unsigned int *child_offset_in_parent)
+                           const unsigned int *child_offset_in_parent,
+                           const unsigned int n_child_cell_dofs)
 {
-  const unsigned int n_fine = utilities::fixed_power<dim>(degree*2+1);
+  const unsigned int n_fine = Utilities::fixed_int_power<degree*2+1,dim>::value;
   const unsigned int coarse_cell = blockIdx.x;
   const unsigned int coarse_offset = child_offset_in_parent[coarse_cell];
   __shared__ Number buf[n_fine];
@@ -846,32 +966,33 @@ __global__ void mg_kernel (Number *dst, const Number *src, const Number *weights
 }
 
 template <int dim, typename Number>
-template <int degree, template <int,int,typename> class loop_body>
+template <template <int,int,typename> class loop_body, int degree>
 void MGTransferMatrixFreeGpu<dim,Number>
 ::coarse_cell_loop  (const unsigned int      coarse_level,
                      GpuVector<Number>       &dst,
                      const GpuVector<Number> &src) const
 {
-  const unsigned int n_fine_dofs_1d = 2*degree+1
+  // const unsigned int n_fine_dofs_1d = 2*degree+1;
   const unsigned int n_coarse_dofs_1d = degree+1;
 
   const unsigned int n_coarse_cells = n_owned_level_cells[coarse_level-1]; // WHY MINUS ONE ?
 
   // kernel parameters
-  dim3 bk_size(n_coarse_dofs_1d,
-               (dim>1)?n_coarse_dofs_1d:1,
-               (dim>2)?n_coarse_dofs_1d:1);
+  dim3 bk_dim(n_coarse_dofs_1d,
+              (dim>1)?n_coarse_dofs_1d:1,
+              (dim>2)?n_coarse_dofs_1d:1);
 
-  dim3 gd_size(n_coarse_cells);
+  dim3 gd_dim(n_coarse_cells);
 
   mg_kernel<dim, degree, loop_body<dim,degree,Number> >
     <<<gd_dim,bk_dim>>> (dst.getData(),
                          src.getDataRO(),
-                         weights.getDataRO(),
+                         weights_on_refined[coarse_level].getDataRO(),
                          shape_values.getDataRO(),
                          level_dof_indices[coarse_level-1].getDataRO(), // why offset by one???
                          level_dof_indices[coarse_level].getDataRO(),
-                         child_offset_in_parent[coarse_level-1].getDataRO());
+                         child_offset_in_parent[coarse_level-1].getDataRO(),
+                         n_child_cell_dofs);
 
 
 }
@@ -900,7 +1021,7 @@ void MGTransferMatrixFreeGpu<dim,Number>
   else
   */
   if (fe_degree == 1)
-    coarse_cell_loop<MGProlongateBody,1>(to_level, dst, src);
+    this->template coarse_cell_loop<MGProlongateBody,1>(to_level, dst, src);
   else if (fe_degree == 2)
     coarse_cell_loop<MGProlongateBody,2>(to_level, dst, src);
   else if (fe_degree == 3)
@@ -987,10 +1108,9 @@ MGTransferMatrixFreeGpu<dim,Number>::memory_consumption() const
 {
   std::size_t memory = 0; // MGLevelGlobalTransfer<GpuVector<Number> >::memory_consumption();
   memory += MemoryConsumption::memory_consumption(level_dof_indices);
-  memory += MemoryConsumption::memory_consumption(parent_child_connect);
+  memory += MemoryConsumption::memory_consumption(child_offset_in_parent);
   memory += MemoryConsumption::memory_consumption(n_owned_level_cells);
-  memory += shape_info.memory_consumption();
-  memory += MemoryConsumption::memory_consumption(evaluation_data);
+  memory += shape_values.memory_consumption();
   memory += MemoryConsumption::memory_consumption(weights_on_refined);
   memory += MemoryConsumption::memory_consumption(dirichlet_indices);
   return memory;
@@ -1000,7 +1120,6 @@ MGTransferMatrixFreeGpu<dim,Number>::memory_consumption() const
 // explicit instantiation
 // #include "mg_transfer_matrix_free.inst"
 
-template <> class MGTransferMatrixFreeGpu<2,double>;
-// template <> class MGTransferMatrixFreeGpu<3,double>;
+template class MGTransferMatrixFreeGpu<2,double>;
 
 DEAL_II_NAMESPACE_CLOSE
