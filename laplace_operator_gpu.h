@@ -31,6 +31,8 @@ template <int dim, int fe_degree,typename Number>
 class LaplaceOperatorGpu : public Subscriptor
 {
 public:
+  typedef Number value_type;
+
   LaplaceOperatorGpu ();
 
   void clear();
