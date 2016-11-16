@@ -54,6 +54,9 @@ TARGET_LINK_LIBRARIES(test_mg_transfer ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(poisson poisson.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
 TARGET_LINK_LIBRARIES(poisson ${LIBRARIES})
 
+CUDA_ADD_EXECUTABLE(poisson_mg poisson_mg.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/mg_transfer_matrix_free_gpu.cu matrix_free_gpu/coloring.cc )
+TARGET_LINK_LIBRARIES(poisson_mg ${LIBRARIES})
+
 CUDA_ADD_EXECUTABLE(bmop bmop.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
 TARGET_LINK_LIBRARIES(bmop ${LIBRARIES})
 
