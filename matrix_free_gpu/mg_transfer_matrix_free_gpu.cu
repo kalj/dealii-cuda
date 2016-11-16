@@ -18,6 +18,7 @@
 #include <deal.II/base/function.h>
 
 // #include <deal.II/lac/gpu_vector.h>
+#include "cuda_utils.cuh"
 #include "atomic.cuh"
 #include "gpu_vec.h"
 #include <deal.II/grid/tria.h>
@@ -52,8 +53,10 @@ namespace internal {
   {
     n = other.size();
     cudaMalloc(&values,n*sizeof(T));
+    cudaAssertNoError();
     cudaMemcpy(values,other.values,n*sizeof(T),
                cudaMemcpyDeviceToDevice);
+    cudaAssertNoError();
   }
 
   template <typename T>
@@ -61,8 +64,10 @@ namespace internal {
   {
     n = host_arr.size();
     cudaMalloc(&values,n*sizeof(T));
+    cudaAssertNoError();
     cudaMemcpy(values,&host_arr[0],n*sizeof(T),
                cudaMemcpyHostToDevice);
+    cudaAssertNoError();
   }
 
   template <typename T>
@@ -70,6 +75,7 @@ namespace internal {
   {
     if(values != NULL) {
       cudaFree(values);
+      cudaAssertNoError();
     }
   }
 
@@ -79,9 +85,11 @@ namespace internal {
     if(n != newsize)
     {
       cudaFree(values);
+      cudaAssertNoError();
 
       n = newsize;
       cudaMalloc(&values,n*sizeof(T));
+      cudaAssertNoError();
     }
   }
 
@@ -92,6 +100,7 @@ namespace internal {
 
     cudaMemcpy(values,other.values,n*sizeof(T),
                cudaMemcpyDeviceToDevice);
+    cudaAssertNoError();
 
     return *this;
   }
@@ -103,6 +112,7 @@ namespace internal {
 
     cudaMemcpy(values,&host_arr[0],n*sizeof(T),
                cudaMemcpyHostToDevice);
+    cudaAssertNoError();
 
     return *this;
   }
@@ -113,6 +123,7 @@ namespace internal {
     n = 0;
     if(values != NULL) {
       cudaFree(values);
+      cudaAssertNoError();
       values = NULL;
     }
   }
@@ -1015,6 +1026,7 @@ void MGTransferMatrixFreeGpu<dim,Number>
                          n_child_cell_dofs);
 
 
+  cudaAssertNoError();
 }
 
 
