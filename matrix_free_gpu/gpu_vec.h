@@ -14,7 +14,6 @@
 #include <cstddef>
 using namespace dealii;
 
-inline void cudaAssertNoError() {}
 
 
 template <typename Number>

@@ -22,10 +22,13 @@
 
 #define CUDA_CHECK_LAST CUDA_CHECK_SUCCESS(cudaGetLastError())
 
+#define cudaAssertNoError() cudaThreadSynchronize() ; CUDA_CHECK_SUCCESS(cudaGetLastError())
+
 #else
 
 #define CUDA_CHECK_SUCCESS(errorCall) errorCall
 #define CUDA_CHECK_LAST
+#define cudaAssertNoError()
 
 #endif
 
