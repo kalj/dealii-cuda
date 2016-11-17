@@ -149,6 +149,13 @@ namespace internal {
     return sizeof(T)*n;
   }
 
+
+  std::size_t IndexMapping::memory_consumption() const
+  {
+    return global_indices.memory_consumption() +
+      level_indices.memory_consumption();
+  }
+
 }
 
 
@@ -1377,6 +1384,7 @@ std::size_t
 MGTransferMatrixFreeGpu<dim,Number>::memory_consumption() const
 {
   std::size_t memory = 0; // MGLevelGlobalTransfer<GpuVector<Number> >::memory_consumption();
+  memory += MemoryConsumption::memory_consumption(copy_indices);
   memory += MemoryConsumption::memory_consumption(level_dof_indices);
   memory += MemoryConsumption::memory_consumption(child_offset_in_parent);
   memory += MemoryConsumption::memory_consumption(n_owned_level_cells);

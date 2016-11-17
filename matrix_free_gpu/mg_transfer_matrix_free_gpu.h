@@ -66,6 +66,8 @@ namespace internal {
   struct IndexMapping {
     GpuList<int> global_indices;
     GpuList<int> level_indices;
+
+    std::size_t memory_consumption() const
   };
 
 }
