@@ -13,8 +13,8 @@
 //
 // ---------------------------------------------------------------------
 
-#ifndef dealii__mg_transfer_matrix_free_h
-#define dealii__mg_transfer_matrix_free_h
+#ifndef dealii__mg_transfer_matrix_free_gpu_h
+#define dealii__mg_transfer_matrix_free_gpu_h
 
 #include <deal.II/base/config.h>
 
@@ -67,7 +67,7 @@ namespace internal {
     GpuList<int> global_indices;
     GpuList<int> level_indices;
 
-    std::size_t memory_consumption() const
+    std::size_t memory_consumption() const;
   };
 
 }
