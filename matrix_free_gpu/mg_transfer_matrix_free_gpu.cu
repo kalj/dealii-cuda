@@ -983,14 +983,22 @@ MGTransferMatrixFreeGpu<dim,Number>::memory_consumption() const
 
 // #include "mg_transfer_matrix_free.inst"
 
-// template class MGTransferMatrixFreeGpu<2,double>;
+template class MGTransferMatrixFreeGpu<2,double>;
 template class MGTransferMatrixFreeGpu<3,double>;
 
+template void
+MGTransferMatrixFreeGpu<2,double>::copy_to_mg (const DoFHandler<2>&,
+                                               MGLevelObject<GpuVector<double> >&,
+                                               const GpuVector<double>&) const;
 template void
 MGTransferMatrixFreeGpu<3,double>::copy_to_mg (const DoFHandler<3>&,
                                                MGLevelObject<GpuVector<double> >&,
                                                const GpuVector<double>&) const;
 
+template void
+MGTransferMatrixFreeGpu<2,double>::copy_from_mg (const DoFHandler<2>&,
+                                                 GpuVector<double>&,
+                                                 const MGLevelObject<GpuVector<double> >&) const;
 template void
 MGTransferMatrixFreeGpu<3,double>::copy_from_mg (const DoFHandler<3>&,
                                                  GpuVector<double>&,
