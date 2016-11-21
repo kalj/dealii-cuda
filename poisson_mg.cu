@@ -158,8 +158,8 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
   setup_time = 0;
 
   system_matrix.clear();
-  mg_matrices.clear();
-  mg_constraints.clear();
+  mg_matrices.clear_elements();
+  mg_constraints.clear_elements();
 
   dof_handler.distribute_dofs (fe);
   dof_handler.distribute_mg_dofs (fe);
@@ -369,10 +369,11 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   Timer time;
 
   MGConstrainedDoFs mg_constrained_dofs;
-  ZeroFunction<dim> zero_function;
-  typename FunctionMap<dim>::type dirichlet_boundary;
-  dirichlet_boundary[0] = &zero_function;
-  mg_constrained_dofs.initialize(dof_handler, dirichlet_boundary);
+  mg_constrained_dofs.initialize(dof_handler);
+  std::set<types::boundary_id> bdry;
+  bdry.insert(0);
+  mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,bdry);
+
 
 
   MGTransferMatrixFreeGpu<dim, number > mg_transfer(mg_constrained_dofs);
