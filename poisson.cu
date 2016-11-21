@@ -242,9 +242,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   PreconditionType preconditioner;
   typename PreconditionType::AdditionalData additional_data;
 
-  additional_data.matrix_diagonal_inverse.reinit(system_matrix.m());
-  additional_data.matrix_diagonal_inverse = 1.0;
-  additional_data.matrix_diagonal_inverse /= system_matrix.get_diagonal();
+  additional_data.preconditioner=system_matrix.get_diagonal_inverse();
 
   preconditioner.initialize(system_matrix,additional_data);
 

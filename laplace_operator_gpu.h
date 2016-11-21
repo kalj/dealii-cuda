@@ -62,13 +62,10 @@ public:
 
   // diagonal for preconditioning
   void set_diagonal (const Vector<Number> &diagonal);
-  const GpuVector<Number>& get_diagonal () const {
-    Assert (diagonal_is_available == true, ExcNotInitialized());
-    return diagonal_values;
-  };
+
+  const std::shared_ptr<DiagonalMatrix<GpuVector<Number>>> get_diagonal_inverse () const;
 
   std::size_t memory_consumption () const;
-
 
 
 private:
@@ -78,8 +75,8 @@ private:
   MatrixFreeGpu<dim,Number>   data;
   GpuVector<Number >          coefficient;
 
-  GpuVector<Number>           diagonal_values;
-  bool                        diagonal_is_available;
+  std::shared_ptr<DiagonalMatrix<GpuVector<Number>>>  inverse_diagonal_matrix;
+  bool                                                diagonal_is_available;
 
 
 };
@@ -90,7 +87,9 @@ template <int dim, int fe_degree, typename Number>
 LaplaceOperatorGpu<dim,fe_degree,Number>::LaplaceOperatorGpu ()
   :
   Subscriptor()
-{}
+{
+  inverse_diagonal_matrix = std::make_shared<DiagonalMatrix<GpuVector<Number>>>();
+}
 
 
 
@@ -100,7 +99,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::clear ()
 {
   data.free();
   diagonal_is_available = false;
-  diagonal_values.reinit(0);
+  inverse_diagonal_matrix->clear();
 }
 
 
@@ -249,12 +248,25 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::set_diagonal(const Vector<Number> &dia
 {
   AssertDimension (m(), diagonal.size());
 
-  diagonal_values = diagonal;
+  GpuVector<Number> &diag = inverse_diagonal_matrix->get_vector();
 
-  data.set_constrained_values(diagonal_values,1.0);
+  diag.reinit(m());
+  diag = 1.0;
+  diag /= GpuVector<Number>(diagonal);
+
+  data.set_constrained_values(diag,1.0);
 
   diagonal_is_available = true;
 }
+
+template <int dim, int fe_degree, typename Number>
+const std::shared_ptr<DiagonalMatrix<GpuVector<Number>>>
+LaplaceOperatorGpu<dim,fe_degree,Number>::get_diagonal_inverse() const
+{
+  Assert (diagonal_is_available == true, ExcNotInitialized());
+  return inverse_diagonal_matrix;
+}
+
 
 
 
@@ -263,7 +275,7 @@ std::size_t
 LaplaceOperatorGpu<dim,fe_degree,Number>::memory_consumption () const
 {
   std::size_t bytes = (data.memory_consumption () +
-                       diagonal_values.memory_consumption() +
+                       MemoryConsumption::memory_consumption(inverse_diagonal_matrix) +
                        MemoryConsumption::memory_consumption(diagonal_is_available) +
                        coefficient.memory_consumption());
 
