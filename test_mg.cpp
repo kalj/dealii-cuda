@@ -3,123 +3,145 @@
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/multigrid/mg_transfer.h>
+#include <deal.II/multigrid/mg_transfer_matrix_free.h>
 #include <deal.II/lac/vector.h>
+#include <deal.II/lac/la_parallel_vector.h>
 
 #include "matrix_free_gpu/mg_transfer_matrix_free_gpu.h"
 #include "matrix_free_gpu/gpu_vec.h"
 
 using namespace dealii;
 
-int main(int argc, char **argv)
+template <typename HostVectorT, typename Number>
+double compute_l2_norm(const HostVectorT& v_host, const GpuVector<Number> &v_dev)
 {
+  Vector<Number> v_dev_host(v_dev.size());
+  v_dev.copyToHost(v_dev_host);
 
+  double diff = 0;
+  for(int i = 0; i < v_host.size(); ++i) {
+    double d = v_dev_host[i]-v_host[i];
+    diff += d*d;
+  }
+  return sqrt(diff);
+}
+
+template <int dim>
+void check(int fe_degree)
+{
+  std::cout << "Running tests for dim=" << dim << ", fe_degree="<<fe_degree << std::endl;
   typedef double Number;
-  const unsigned int dimension = 3;
-  const unsigned int fe_degree = 3;
+  const int nref = 4;
 
-  Triangulation<dimension>               triangulation;
-  FE_Q<dimension>                        fe(fe_degree);
-  DoFHandler<dimension>                  dof_handler(triangulation);
+  Triangulation<dim>  triangulation(Triangulation<dim>::limit_level_difference_at_vertices);
+  FE_Q<dim>           fe(fe_degree);
+  DoFHandler<dim>     dof_handler(triangulation);
 
   GridGenerator::subdivided_hyper_cube (triangulation, 4);
 
-  triangulation.refine_global(4);
+  triangulation.refine_global(nref);
 
 
   dof_handler.distribute_dofs (fe);
   dof_handler.distribute_mg_dofs (fe);
 
-
-  ConstraintMatrix hanging_node_constraints;
   MGConstrainedDoFs mg_constrained_dofs;
-  ZeroFunction<dimension> zero_function;
-  typename FunctionMap<dimension>::type dirichlet_boundary;
-  dirichlet_boundary[0] = &zero_function;
-  mg_constrained_dofs.initialize(dof_handler, dirichlet_boundary);
+
+  mg_constrained_dofs.initialize(dof_handler);
+  std::set<types::boundary_id> bdry;
+  bdry.insert(0);
+  mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,bdry);
 
 
   // build reference
-  MGTransferPrebuilt<Vector<double> >
-    transfer_ref(hanging_node_constraints, mg_constrained_dofs);
-  transfer_ref.build_matrices(dof_handler);
+  MGTransferMatrixFree<dim,Number> transfer_ref(mg_constrained_dofs);
+  transfer_ref.build(dof_handler);
 
   // build matrix-free transfer
-  MGTransferMatrixFreeGpu<dimension,Number> transfer(mg_constrained_dofs);
+  MGTransferMatrixFreeGpu<dim,Number> transfer(mg_constrained_dofs);
   transfer.build(dof_handler);
 
 
   // check prolongation for all levels using random vector
   for (unsigned int level=1; level<dof_handler.get_triangulation().n_global_levels(); ++level)
   {
-    Vector<Number> v1, v2;
-    GpuVector<Number> v1_dev, v2_dev;
-    Vector<double> v1_cpy, v2_cpy, v3;
-    v1.reinit(dof_handler.n_dofs(level-1));
-    v2.reinit(dof_handler.n_dofs(level));
-    v3.reinit(dof_handler.n_dofs(level));
-    for (unsigned int i=0; i<v1.size(); ++i)
-      v1[i] = 3;
-      // v1[i] = (double)rand()/RAND_MAX;
+    int n_dofs_src = dof_handler.n_dofs(level-1);
+    int n_dofs_dst = dof_handler.n_dofs(level);
 
-    // std::cout << "Input: " << v1 << std::endl;
+    LinearAlgebra::distributed::Vector<Number> v_src_host(n_dofs_src);
+    LinearAlgebra::distributed::Vector<Number> v_dst_host(n_dofs_dst);
+    GpuVector<Number> v_src_dev(n_dofs_src);
+    GpuVector<Number> v_dst_dev(n_dofs_dst);
 
-    v1_dev = v1;
-    v2_dev = v2;
-    transfer.prolongate(level, v2_dev, v1_dev);
-    v2_dev.copyToHost(v2);
+    {
+      Vector<Number> v_src_dev_init(n_dofs_src);
+      for (unsigned int i=0; i<n_dofs_src; ++i) {
+        v_src_host[i] = (double)rand()/RAND_MAX;
+        v_src_dev_init[i] = (double)rand()/RAND_MAX;
+      }
+      v_src_dev = v_src_dev_init;
+    }
 
-    v1_cpy = v1;
-    transfer_ref.prolongate(level, v3, v1_cpy);
+    transfer_ref.prolongate(level, v_dst_host, v_src_host);
 
-    // std::cout << "Output (cpu): " << v3 << std::endl;
-    // std::cout << "Output (gpu): " << v2 << std::endl;
+    transfer.prolongate(level, v_dst_dev, v_src_dev);
 
-    v2_cpy = v2;
-    v3 -= v2_cpy;
-    std::cout << "Diff prolongate   l" << level << ": " << v3.l2_norm() << std::endl;
+    std::cout << "Diff prolongate   l" << level << ": " << compute_l2_norm(v_dst_host,v_dst_dev) << std::endl;
   }
 
   // check restriction for all levels using random vector
   for (unsigned int level=1; level<dof_handler.get_triangulation().n_global_levels(); ++level)
   {
-    Vector<Number> v1, v2;
-    GpuVector<Number> v1_dev, v2_dev;
-    Vector<double> v1_cpy, v2_cpy, v3;
-    v1.reinit(dof_handler.n_dofs(level));
-    v2.reinit(dof_handler.n_dofs(level-1));
-    v3.reinit(dof_handler.n_dofs(level-1));
-    for (unsigned int i=0; i<v1.size(); ++i)
-      v1[i] = (double)rand()/RAND_MAX;
+    int n_dofs_src = dof_handler.n_dofs(level);
+    int n_dofs_dst = dof_handler.n_dofs(level-1);
 
+    LinearAlgebra::distributed::Vector<Number> v_src_host(n_dofs_src);
+    LinearAlgebra::distributed::Vector<Number> v_dst_host(n_dofs_dst);
+    GpuVector<Number> v_src_dev(n_dofs_src);
+    GpuVector<Number> v_dst_dev(n_dofs_dst);
 
+    {
+      Vector<Number> v_src_dev_init(n_dofs_src);
+      for (unsigned int i=0; i<n_dofs_src; ++i) {
+        v_src_host[i] = (double)rand()/RAND_MAX;
+        v_src_dev_init[i] = (double)rand()/RAND_MAX;
+      }
+      v_src_dev = v_src_dev_init;
+    }
 
-    v1_dev = v1;
-    v2_dev = v2;
-    transfer.restrict_and_add(level, v2_dev, v1_dev);
-    v2_dev.copyToHost(v2);
+    v_dst_host = 0.;
+    v_dst_dev  = 0.;
 
-    v1_cpy = v1;
-    transfer_ref.restrict_and_add(level, v3, v1_cpy);
+    transfer_ref.restrict_and_add(level, v_dst_host, v_src_host);
 
-    v2_cpy = v2;
-    v3 -= v2_cpy;
-    std::cout << "Diff restrict     l" << level << ": " << v3.l2_norm() << std::endl;
+    transfer.restrict_and_add(level, v_dst_dev, v_src_dev);
 
-    v2 = 1.;
-    v3 = 1.;
+    std::cout << "Diff restrict     l" << level << ": " << compute_l2_norm(v_dst_host,v_dst_dev) << std::endl;
 
-    v1_dev = v1;
-    v2_dev = v2;
-    transfer.restrict_and_add(level, v2_dev, v1_dev);
+    v_dst_host = 1.;
+    v_dst_dev  = 1.;
 
-    transfer_ref.restrict_and_add(level, v3, v1_cpy);
-    v2_dev.copyToHost(v2);
+    transfer_ref.restrict_and_add(level, v_dst_host, v_src_host);
 
-    v2_cpy = v2;
-    v3 -= v2_cpy;
-    std::cout << "Diff restrict add l" << level << ": " << v3.l2_norm() << std::endl;
+    transfer.restrict_and_add(level, v_dst_dev, v_src_dev);
+
+    std::cout << "Diff restrict add l" << level << ": " << compute_l2_norm(v_dst_host,v_dst_dev) << std::endl;
+
   }
 
+}
+
+int main(int argc, char **argv)
+{
+  check<2>(1);
+  check<2>(2);
+  check<2>(3);
+  check<2>(4);
+
+  check<3>(1);
+  check<3>(2);
+  check<3>(3);
+  check<3>(4);
 
   return 0;
 }
