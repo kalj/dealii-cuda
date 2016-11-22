@@ -61,7 +61,6 @@ void check(int fe_degree)
   MGTransferMatrixFreeGpu<dim,Number> transfer(mg_constrained_dofs);
   transfer.build(dof_handler);
 
-
   // check prolongation for all levels using random vector
   for (unsigned int level=1; level<dof_handler.get_triangulation().n_global_levels(); ++level)
   {
@@ -76,8 +75,9 @@ void check(int fe_degree)
     {
       Vector<Number> v_src_dev_init(n_dofs_src);
       for (unsigned int i=0; i<n_dofs_src; ++i) {
-        v_src_host[i] = (double)rand()/RAND_MAX;
-        v_src_dev_init[i] = (double)rand()/RAND_MAX;
+        double a = (double)rand()/RAND_MAX;
+        v_src_host[i] = a;
+        v_src_dev_init[i] = a;
       }
       v_src_dev = v_src_dev_init;
     }
@@ -103,8 +103,9 @@ void check(int fe_degree)
     {
       Vector<Number> v_src_dev_init(n_dofs_src);
       for (unsigned int i=0; i<n_dofs_src; ++i) {
-        v_src_host[i] = (double)rand()/RAND_MAX;
-        v_src_dev_init[i] = (double)rand()/RAND_MAX;
+        double a = (double)rand()/RAND_MAX;
+        v_src_host[i] = a;
+        v_src_dev_init[i] = a;
       }
       v_src_dev = v_src_dev_init;
     }
