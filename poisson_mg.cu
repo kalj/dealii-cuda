@@ -324,7 +324,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_multigrid ()
   Vector<number>            local_diagonal (dofs_per_cell);
 
   const unsigned int n_levels = triangulation.n_levels();
-  std::vector<Vector<float> > diagonals (n_levels);
+  std::vector<Vector<double> > diagonals (n_levels);
   for (unsigned int level=0; level<n_levels; ++level)
     diagonals[level].reinit (dof_handler.n_dofs(level));
 
