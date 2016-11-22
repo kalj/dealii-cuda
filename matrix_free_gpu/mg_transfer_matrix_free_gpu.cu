@@ -274,8 +274,8 @@ void MGTransferMatrixFreeGpu<dim,Number>::setup_copy_indices(const DoFHandler<di
 
   if (perform_plain_copy)
   {
-    // AssertDimension(copy_indices_global_mine.back().size(), 0);
-    // AssertDimension(copy_indices_level_mine.back().size(), 0);
+    AssertDimension(copy_indices_global_mine.back().size(), 0);
+    AssertDimension(copy_indices_level_mine.back().size(), 0);
 
     // check whether there is a renumbering of degrees of freedom on
     // either the finest level or the global dofs, which means that we
@@ -289,7 +289,6 @@ void MGTransferMatrixFreeGpu<dim,Number>::setup_copy_indices(const DoFHandler<di
   }
 
 }
-
 
 template <int dim, typename Number>
 void MGTransferMatrixFreeGpu<dim,Number>::build
@@ -720,22 +719,12 @@ void MGTransferMatrixFreeGpu<dim,Number>
   Assert ((to_level >= 1) && (to_level<=level_dof_indices.size()),
           ExcIndexRange (to_level, 1, level_dof_indices.size()+1));
 
-  // AssertDimension(this->ghosted_level_vector[to_level].local_size(),
-  //                 dst.local_size());
-  // AssertDimension(this->ghosted_level_vector[to_level-1].local_size(),
-  //                 src.local_size());
 
-  // this->ghosted_level_vector[to_level-1] = src;
-  // this->ghosted_level_vector[to_level] = 0.;
   dst = 0;
 
   GpuVector<Number> src_with_bc(src);
   set_constrained_dofs(src_with_bc,to_level-1,0);
 
-  /*if (fe_degree == 0)
-    coarse_cell_loop<MGProlongateBody,0>(to_level, dst, src);
-  else
-  */
   if (fe_degree == 1)
     coarse_cell_loop<MGProlongateBody,1>(to_level, dst, src_with_bc);
   else if (fe_degree == 2)
@@ -744,28 +733,13 @@ void MGTransferMatrixFreeGpu<dim,Number>
     coarse_cell_loop<MGProlongateBody,3>(to_level, dst, src_with_bc);
   else if (fe_degree == 4)
     coarse_cell_loop<MGProlongateBody,4>(to_level, dst, src_with_bc);
-  // else if (fe_degree == 5)
-    // coarse_cell_loop<MGProlongateBody,5>(to_level, dst, src);
-  // else if (fe_degree == 6)
-    // coarse_cell_loop<MGProlongateBody,6>(to_level, dst, src);
-  // else if (fe_degree == 7)
-    // coarse_cell_loop<MGProlongateBody,7>(to_level, dst, src);
-  // else if (fe_degree == 8)
-    // coarse_cell_loop<MGProlongateBody,8>(to_level, dst, src);
-  // else if (fe_degree == 9)
-    // coarse_cell_loop<MGProlongateBody,9>(to_level, dst, src);
-  // else if (fe_degree == 10)
-    // coarse_cell_loop<MGProlongateBody,10>(to_level, dst, src);
   else
-    AssertThrow(false, ExcNotImplemented("Only degrees 0 up to 10 implemented."));
-
+    AssertThrow(false, ExcNotImplemented("Only degrees 1 through 4 implemented."));
 
   // now set constrained dofs to 0
 
   // set_constrained_dofs(dst,to_level,0);
 
-  // this->ghosted_level_vector[to_level].compress(VectorOperation::add);
-  // dst = this->ghosted_level_vector[to_level];
 }
 
 
@@ -776,25 +750,13 @@ void MGTransferMatrixFreeGpu<dim,Number>
                     GpuVector<Number>       &dst,
                     const GpuVector<Number> &src) const
 {
+
   Assert ((from_level >= 1) && (from_level<=level_dof_indices.size()),
           ExcIndexRange (from_level, 1, level_dof_indices.size()+1));
-
-  // AssertDimension(this->ghosted_level_vector[from_level].local_size(),
-  //                 src.local_size());
-  // AssertDimension(this->ghosted_level_vector[from_level-1].local_size(),
-  //                 dst.local_size());
-
-  // this->ghosted_level_vector[from_level] = src;
-  // this->ghosted_level_vector[from_level].update_ghost_values();
-  // this->ghosted_level_vector[from_level-1] = 0.;
 
   GpuVector<Number> increment;
   increment.reinit(dst,false); // resize to correct size and initialize to 0
 
-  /*if (fe_degree == 0)
-    coarse_cell_loop<MGRestrictBody,0>(from_level, increment, src);
-  else
-  */
   if (fe_degree == 1)
     coarse_cell_loop<MGRestrictBody,1>(from_level, increment, src);
   else if (fe_degree == 2)
@@ -803,23 +765,8 @@ void MGTransferMatrixFreeGpu<dim,Number>
     coarse_cell_loop<MGRestrictBody,3>(from_level, increment, src);
   else if (fe_degree == 4)
     coarse_cell_loop<MGRestrictBody,4>(from_level, increment, src);
-  // else if (fe_degree == 5)
-    // coarse_cell_loop<MGRestrictBody,5>(from_level, increment, src);
-  // else if (fe_degree == 6)
-    // coarse_cell_loop<MGRestrictBody,6>(from_level, increment, src);
-  // else if (fe_degree == 7)
-    // coarse_cell_loop<MGRestrictBody,7>(from_level, increment, src);
-  // else if (fe_degree == 8)
-    // coarse_cell_loop<MGRestrictBody,8>(from_level, increment, src);
-  // else if (fe_degree == 9)
-    // coarse_cell_loop<MGRestrictBody,9>(from_level, increment, src);
-  // else if (fe_degree == 10)
-    // coarse_cell_loop<MGRestrictBody,10>(from_level, increment, src);
   else
-    AssertThrow(false, ExcNotImplemented("Only degrees 0 up to 10 implemented."));
-
-  // this->ghosted_level_vector[from_level-1].compress(VectorOperation::add);
-  // dst += this->ghosted_level_vector[from_level-1];
+    AssertThrow(false, ExcNotImplemented("Only degrees 1 through 4 implemented."));
 
   set_constrained_dofs(increment,from_level-1,0);
 
@@ -891,8 +838,6 @@ MGTransferMatrixFreeGpu<dim,Number>::copy_to_mg (const DoFHandler<dim,spacedim> 
     dst[level].reinit(n);
   }
 
-
-
   if (perform_plain_copy)
   {
     // if the finest multigrid level covers the whole domain (i.e., no
@@ -938,13 +883,11 @@ MGTransferMatrixFreeGpu<dim,Number>::copy_from_mg (const DoFHandler<dim,spacedim
   dst = 0;
   for (unsigned int level=src.min_level(); level<=src.max_level(); ++level)
   {
-
     const GpuVector<Number> &src_level = src[level];
 
     copy_with_indices(dst,src_level,
                       copy_indices[level].global_indices,
                       copy_indices[level].level_indices);
-
   }
 }
 
