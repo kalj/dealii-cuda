@@ -112,7 +112,7 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
             << std::endl;
 
   std::cout << "Number of elements: "
-            << dof_handler.get_triangulation().n_active_cells()
+            << triangulation.n_active_cells()
             << std::endl;
 
   constraints.clear();
