@@ -590,6 +590,7 @@ void LaplaceProblem<dim,fe_degree>::run ()
 
     setup_system ();
     assemble_system ();
+    assemble_multigrid ();
     solve ();
     output_results (cycle);
 
