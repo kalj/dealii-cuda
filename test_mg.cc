@@ -27,19 +27,46 @@ double compute_l2_norm(const HostVectorT& v_host, const GpuVector<Number> &v_dev
 }
 
 template <int dim>
-void check(int fe_degree)
+void check(int fe_degree, bool adaptive)
 {
   std::cout << "Running tests for dim=" << dim << ", fe_degree="<<fe_degree << std::endl;
   typedef double Number;
-  const int nref = 4;
 
   Triangulation<dim>  triangulation(Triangulation<dim>::limit_level_difference_at_vertices);
   FE_Q<dim>           fe(fe_degree);
   DoFHandler<dim>     dof_handler(triangulation);
 
-  GridGenerator::subdivided_hyper_cube (triangulation, 4);
+  GridGenerator::subdivided_hyper_cube (triangulation, 2);
 
-  triangulation.refine_global(nref);
+  if(adaptive) {
+    int nref = 2 + (3 - dim) + (fe_degree < 3);
+
+    triangulation.refine_global(nref);
+
+    // adaptive refinement into a circle
+    for (typename Triangulation<dim>::active_cell_iterator cell=triangulation.begin_active();
+         cell != triangulation.end(); ++cell)
+      if (cell->is_locally_owned() &&
+          cell->center().norm() < 0.5)
+        cell->set_refine_flag();
+    triangulation.execute_coarsening_and_refinement();
+    for (typename Triangulation<dim>::active_cell_iterator cell=triangulation.begin_active();
+         cell != triangulation.end(); ++cell)
+      if (cell->is_locally_owned() &&
+          cell->center().norm() > 0.3 && cell->center().norm() < 0.4)
+        cell->set_refine_flag();
+    triangulation.execute_coarsening_and_refinement();
+    for (typename Triangulation<dim>::active_cell_iterator cell=triangulation.begin_active();
+         cell != triangulation.end(); ++cell)
+      if (cell->is_locally_owned() &&
+          cell->center().norm() > 0.33 && cell->center().norm() < 0.37)
+        cell->set_refine_flag();
+    triangulation.execute_coarsening_and_refinement();
+  }
+  else {
+    int nref = 4 + (3 - dim) + (fe_degree < 3);
+    triangulation.refine_global(nref);
+  }
 
 
   dof_handler.distribute_dofs (fe);
@@ -134,15 +161,19 @@ void check(int fe_degree)
 
 int main(int argc, char **argv)
 {
-  check<2>(1);
-  check<2>(2);
-  check<2>(3);
-  check<2>(4);
+  printf("Running tests on uniform mesh\n");
+  for(int p = 1; p < 5; ++p)
+    check<2>(p,false);
 
-  check<3>(1);
-  check<3>(2);
-  check<3>(3);
-  check<3>(4);
+  for(int p = 1; p < 5; ++p)
+    check<3>(p,false);
+
+  printf("Running tests on adaptive mesh\n");
+  for(int p = 1; p < 5; ++p)
+    check<2>(p,true);
+
+  for(int p = 1; p < 5; ++p)
+    check<3>(p,true);
 
   return 0;
 }
