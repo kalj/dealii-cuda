@@ -32,6 +32,10 @@
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
 
+#include <deal.II/multigrid/mg_smoother.h>
+#include <deal.II/multigrid/mg_matrix.h>
+#include <deal.II/multigrid/multigrid.h>
+
 #include <fstream>
 #include <sstream>
 
@@ -45,6 +49,74 @@
 using namespace dealii;
 
 typedef double number;
+typedef double level_number;
+// typedef float level_number;
+
+
+
+//=============================================================================
+// XXX: Copied from parallel_multigrid_mf.cc
+//=============================================================================
+template<typename MatrixType, typename Number>
+class MGCoarseIterative : public MGCoarseGridBase<GpuVector<Number> >
+{
+public:
+  MGCoarseIterative() {}
+
+  void initialize(const MatrixType &matrix)
+  {
+    coarse_matrix = &matrix;
+  }
+
+  virtual void operator() (const unsigned int   level,
+                           GpuVector<Number> &dst,
+                           const GpuVector<Number> &src) const
+  {
+    ReductionControl solver_control (1e4, 1e-50, 1e-10);
+    SolverCG<GpuVector<Number> > solver_coarse (solver_control);
+    solver_coarse.solve (*coarse_matrix, dst, src, PreconditionIdentity());
+  }
+
+  const MatrixType *coarse_matrix;
+};
+
+template <int dim, typename MatrixType>
+class MGTransferPrebuiltMF : public MGTransferMatrixFreeGpu<dim, typename MatrixType::value_type>
+{
+public:
+  MGTransferPrebuiltMF(const MGLevelObject<MatrixType> &laplace,
+                       const MGConstrainedDoFs &mg_constrained_dofs)
+    :
+    MGTransferMatrixFreeGpu<dim, typename MatrixType::value_type>(mg_constrained_dofs),
+    laplace_operator (laplace)
+  {};
+
+  /**
+   * Overload copy_to_mg from MGTransferPrebuilt to get the vectors compatible
+   * with MatrixFree and bypass the crude initialization in MGTransferPrebuilt
+   */
+  template <class InVector, int spacedim>
+  void
+  copy_to_mg (const DoFHandler<dim,spacedim> &mg_dof,
+              MGLevelObject<GpuVector<typename MatrixType::value_type> > &dst,
+              const InVector &src) const
+  {
+    for (unsigned int level=dst.min_level();
+         level<=dst.max_level(); ++level)
+      laplace_operator[level].initialize_dof_vector(dst[level]);
+    MGLevelGlobalTransfer<GpuVector<typename MatrixType::value_type> >::copy_to_mg(mg_dof, dst, src);
+  }
+
+private:
+  const MGLevelObject<MatrixType> &laplace_operator;
+};
+
+//=============================================================================
+
+
+
+
+
 
 // #define USE_HANGING_NODES
 
@@ -69,7 +141,7 @@ private:
   void output_results (const unsigned int cycle) const;
 
   typedef LaplaceOperatorGpu<dim,fe_degree,number> SystemMatrixType;
-  typedef LaplaceOperatorGpu<dim,fe_degree,float>  LevelMatrixType;
+  typedef LaplaceOperatorGpu<dim,fe_degree,level_number>  LevelMatrixType;
 
   Triangulation<dim>               triangulation;
   FE_Q<dim>                        fe;
@@ -323,10 +395,10 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   ZeroFunction<dim> zero_function;
   typename FunctionMap<dim>::type dirichlet_boundary;
   dirichlet_boundary[0] = &zero_function;
-  mg_constrained_dofs.initialize(dof, dirichlet_boundary);
+  mg_constrained_dofs.initialize(dof_handler, dirichlet_boundary);
 
 
-  MGTransferMatrixFree<GpuVector<number> > mg_transfer(mg_transfer,mg_constrained_dofs);
+  MGTransferPrebuiltMF<dim, LevelMatrixType > mg_transfer(mg_matrices,mg_constrained_dofs);
   mg_transfer.build(dof_handler);
 
   setup_time += time.wall_time();
@@ -334,6 +406,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
                << "s/" << time.wall_time() << "s\n";
   time.restart();
 
+  // XXX: this should be with 'number' precision, but LevelMatrixType is with floats
   MGCoarseIterative<LevelMatrixType,number> mg_coarse;
   mg_coarse.initialize(mg_matrices[0]);
 
@@ -349,9 +422,9 @@ void LaplaceProblem<dim,fe_degree>::solve ()
     mg_smoother;
 
   MGLevelObject<typename SMOOTHER::AdditionalData> smoother_data;
-  smoother_data.resize(0, dof.get_triangulation().n_global_levels()-1);
+  smoother_data.resize(0, dof_handler.get_triangulation().n_global_levels()-1);
   for (unsigned int level = 0;
-       level<dof.get_triangulation().n_global_levels();
+       level<dof_handler.get_triangulation().n_global_levels();
        ++level) {
     smoother_data[level].smoothing_range = 15.;
     smoother_data[level].degree = 5;
@@ -368,7 +441,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
   mg::Matrix<GpuVector<number> > mg_matrix(mg_matrices);
 
-  Multigrid<GpuVector<number> > mg(dof,
+  Multigrid<GpuVector<number> > mg(dof_handler,
                                    mg_matrix,
                                    mg_coarse,
                                    mg_transfer,
@@ -377,12 +450,11 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
   PreconditionMG<dim, GpuVector<number>,
                  MGTransferMatrixFreeGpu<dim,LevelMatrixType> >
-                 preconditioner(dof, mg, mg_transfer);
+                 preconditioner(dof_handler, mg, mg_transfer);
 
   const std::size_t multigrid_memory
     = (mg_matrices.memory_consumption() +
-       mg_transfer.memory_consumption() +
-       coarse_matrix.memory_consumption());
+       mg_transfer.memory_consumption());
   std::cout << "Multigrid objects memory consumption: "
             << multigrid_memory * 1e-6
             << " MB."
