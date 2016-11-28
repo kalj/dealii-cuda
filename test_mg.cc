@@ -12,6 +12,8 @@
 
 using namespace dealii;
 
+double maxdiff = 0.0;
+
 template <typename HostVectorT, typename Number>
 double compute_l2_norm(const HostVectorT& v_host, const GpuVector<Number> &v_dev)
 {
@@ -29,6 +31,8 @@ double compute_l2_norm(const HostVectorT& v_host, const GpuVector<Number> &v_dev
 template <int dim>
 void check(int fe_degree, bool adaptive)
 {
+
+
   std::cout << "Running tests for dim=" << dim << ", fe_degree="<<fe_degree << std::endl;
   typedef double Number;
 
@@ -39,7 +43,7 @@ void check(int fe_degree, bool adaptive)
   GridGenerator::subdivided_hyper_cube (triangulation, 2);
 
   if(adaptive) {
-    int nref = 2 + (3 - dim) + (fe_degree < 3);
+    int nref = 3 + (3 - dim) + (fe_degree < 3);
 
     triangulation.refine_global(nref);
 
@@ -112,8 +116,9 @@ void check(int fe_degree, bool adaptive)
     transfer_ref.prolongate(level, v_dst_host, v_src_host);
 
     transfer.prolongate(level, v_dst_dev, v_src_dev);
-
-    std::cout << "Diff prolongate   l" << level << ": " << compute_l2_norm(v_dst_host,v_dst_dev) << std::endl;
+    double diff = compute_l2_norm(v_dst_host,v_dst_dev);
+    std::cout << "  Diff prolongate   l" << level << ": " << diff << std::endl;
+    maxdiff = diff > maxdiff ? diff : maxdiff;
   }
 
   // check restriction for all levels using random vector
@@ -144,7 +149,9 @@ void check(int fe_degree, bool adaptive)
 
     transfer.restrict_and_add(level, v_dst_dev, v_src_dev);
 
-    std::cout << "Diff restrict     l" << level << ": " << compute_l2_norm(v_dst_host,v_dst_dev) << std::endl;
+    double diff = compute_l2_norm(v_dst_host,v_dst_dev);
+    std::cout << "  Diff restrict     l" << level << ": " << diff << std::endl;
+    maxdiff = diff > maxdiff ? diff : maxdiff;
 
     v_dst_host = 1.;
     v_dst_dev  = 1.;
@@ -153,7 +160,9 @@ void check(int fe_degree, bool adaptive)
 
     transfer.restrict_and_add(level, v_dst_dev, v_src_dev);
 
-    std::cout << "Diff restrict add l" << level << ": " << compute_l2_norm(v_dst_host,v_dst_dev) << std::endl;
+    diff = compute_l2_norm(v_dst_host,v_dst_dev);
+    std::cout << "  Diff restrict add l" << level << ": " << diff << std::endl;
+    maxdiff = diff > maxdiff ? diff : maxdiff;
 
   }
 
@@ -161,19 +170,21 @@ void check(int fe_degree, bool adaptive)
 
 int main(int argc, char **argv)
 {
-  printf("Running tests on uniform mesh\n");
+  printf("--- Running tests on uniform mesh ---\n");
   for(int p = 1; p < 5; ++p)
     check<2>(p,false);
 
   for(int p = 1; p < 5; ++p)
     check<3>(p,false);
 
-  printf("Running tests on adaptive mesh\n");
+  printf("-- Running tests on adaptive mesh ---\n");
   for(int p = 1; p < 5; ++p)
     check<2>(p,true);
 
   for(int p = 1; p < 5; ++p)
     check<3>(p,true);
+
+  std::cout << ">>> Maximum difference: " << maxdiff << std::endl;
 
   return 0;
 }
