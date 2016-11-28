@@ -46,6 +46,13 @@
 
 #include "laplace_operator_gpu.h"
 
+
+// explicit instantiation of Multigrid
+#include <deal.II/multigrid/multigrid.templates.h>
+template class Multigrid< GpuVector<double> >;
+
+
+
 using namespace dealii;
 
 typedef double number;
@@ -80,36 +87,6 @@ public:
   const MatrixType *coarse_matrix;
 };
 
-template <int dim, typename MatrixType>
-class MGTransferPrebuiltMF : public MGTransferMatrixFreeGpu<dim, typename MatrixType::value_type>
-{
-public:
-  MGTransferPrebuiltMF(const MGLevelObject<MatrixType> &laplace,
-                       const MGConstrainedDoFs &mg_constrained_dofs)
-    :
-    MGTransferMatrixFreeGpu<dim, typename MatrixType::value_type>(mg_constrained_dofs),
-    laplace_operator (laplace)
-  {};
-
-  /**
-   * Overload copy_to_mg from MGTransferPrebuilt to get the vectors compatible
-   * with MatrixFree and bypass the crude initialization in MGTransferPrebuilt
-   */
-  template <class InVector, int spacedim>
-  void
-  copy_to_mg (const DoFHandler<dim,spacedim> &mg_dof,
-              MGLevelObject<GpuVector<typename MatrixType::value_type> > &dst,
-              const InVector &src) const
-  {
-    for (unsigned int level=dst.min_level();
-         level<=dst.max_level(); ++level)
-      laplace_operator[level].initialize_dof_vector(dst[level]);
-    MGLevelGlobalTransfer<GpuVector<typename MatrixType::value_type> >::copy_to_mg(mg_dof, dst, src);
-  }
-
-private:
-  const MGLevelObject<MatrixType> &laplace_operator;
-};
 
 //=============================================================================
 
@@ -359,7 +336,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_multigrid ()
     const unsigned int level = cell->level();
     cell->get_mg_dof_indices (local_dof_indices);
     fe_values.reinit (cell);
-    coefficient.value_list (fe_values.get_quadrature_points(),
+    coeff.value_list (fe_values.get_quadrature_points(),
                             coefficient_values);
 
     for (unsigned int i=0; i<dofs_per_cell; ++i)
@@ -398,7 +375,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   mg_constrained_dofs.initialize(dof_handler, dirichlet_boundary);
 
 
-  MGTransferPrebuiltMF<dim, LevelMatrixType > mg_transfer(mg_matrices,mg_constrained_dofs);
+  MGTransferMatrixFreeGpu<dim, number > mg_transfer(mg_constrained_dofs);
   mg_transfer.build(dof_handler);
 
   setup_time += time.wall_time();
@@ -441,15 +418,14 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
   mg::Matrix<GpuVector<number> > mg_matrix(mg_matrices);
 
-  Multigrid<GpuVector<number> > mg(dof_handler,
-                                   mg_matrix,
+  Multigrid<GpuVector<number> > mg(mg_matrix,
                                    mg_coarse,
                                    mg_transfer,
                                    mg_smoother,
                                    mg_smoother);
 
   PreconditionMG<dim, GpuVector<number>,
-                 MGTransferMatrixFreeGpu<dim,LevelMatrixType> >
+                 MGTransferMatrixFreeGpu<dim,number> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
   const std::size_t multigrid_memory
@@ -521,6 +497,10 @@ void LaplaceProblem<dim,fe_degree>::output_results (const unsigned int cycle) co
   data_out.write_vtu (output);
 }
 
+
+//=============================================================================
+// mesh setup and refinement
+
 template <int dim>
 bool all_criterion(const Point<dim> &p) {
   return true;
@@ -554,6 +534,9 @@ void mark_cells(Triangulation<dim> &triangulation,
       it->set_refine_flag();
   }
 }
+
+//=============================================================================
+
 
 template <int dim, int fe_degree>
 void LaplaceProblem<dim,fe_degree>::run ()
