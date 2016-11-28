@@ -48,8 +48,8 @@ TARGET_LINK_LIBRARIES(test_spm ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(poisson_spm poisson_spm.cu matrix_free_gpu/cuda_sparse_matrix.cu matrix_free_gpu/gpu_vec.cu)
 TARGET_LINK_LIBRARIES(poisson_spm ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
 
-CUDA_ADD_EXECUTABLE(test_mg test_mg.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/mg_transfer_matrix_free_gpu.cu)
-TARGET_LINK_LIBRARIES(test_mg ${LIBRARIES})
+CUDA_ADD_EXECUTABLE(test_mg_transfer test_mg_transfer.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/mg_transfer_matrix_free_gpu.cu)
+TARGET_LINK_LIBRARIES(test_mg_transfer ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(poisson poisson.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
 TARGET_LINK_LIBRARIES(poisson ${LIBRARIES})
