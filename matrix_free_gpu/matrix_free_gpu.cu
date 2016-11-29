@@ -92,6 +92,17 @@ public:
     lexicographic_dof_indices.resize(dofs_per_cell);
   }
 
+  template <typename Iterator>
+  void init(const Iterator     &begin,
+            const Iterator     &end,
+            const dealii::ConstraintMatrix    &constraints);
+
+
+  template <typename Iterator>
+  void init_with_coloring(const Iterator     &begin,
+                          const Iterator     &end,
+                          const dealii::ConstraintMatrix    &constraints);
+
 
   void setup_color_arrays(const unsigned int num_colors);
   void setup_cell_arrays(const unsigned int c);
@@ -117,7 +128,59 @@ public:
   void get_cell_data(const T& cell,const unsigned int cellid);
 
   void alloc_and_copy_arrays(const unsigned int c);
+
 };
+
+template <int dim, typename Number>
+template <typename Iterator>
+void ReinitHelper<dim,Number>::init(const Iterator     &begin,
+                                    const Iterator     &end,
+                                    const dealii::ConstraintMatrix    &constraints)
+{
+  data->num_colors = 1;
+
+  setup_color_arrays(1);
+
+  data->n_cells[0] = data->n_cells_tot;
+
+  setup_cell_arrays(0);
+
+  cell_loop(begin,end);
+
+  // now allocate and copy stuff to the device
+  alloc_and_copy_arrays(0);
+}
+
+template <int dim, typename Number>
+template <typename Iterator>
+void ReinitHelper<dim,Number>::init_with_coloring(const Iterator     &begin,
+                                                  const Iterator     &end,
+                                                  const dealii::ConstraintMatrix    &constraints)
+{
+  // create graph coloring
+
+  typedef FilteredIterator<Iterator> CellFilter;
+  std::vector<std::vector<CellFilter > > graph =
+    GraphColoringWrapper<dim,Iterator>::make_graph_coloring(begin, end,
+                                                            constraints);
+
+  data->num_colors = graph.size();
+
+  setup_color_arrays(data->num_colors);
+
+  for(int c = 0; c < data->num_colors; ++c) {
+    data->n_cells[c] = graph[c].size();
+
+    setup_cell_arrays(c);
+
+    cell_loop<CellFilter>(graph[c].begin(),
+                          graph[c].end());
+
+    // now allocate and copy stuff to the device
+    alloc_and_copy_arrays(c);
+  }
+
+}
 
 template <int dim, typename Number>
 void ReinitHelper<dim,Number>::setup_color_arrays(const unsigned int num_colors)
@@ -421,60 +484,35 @@ reinit(const Mapping<dim>        &mapping,
 
   if(use_coloring) {
 
-    // create graph coloring
     if(level_mg_handler != numbers::invalid_unsigned_int) {
-      AssertThrow(false, ExcNotImplemented());
+
+      helper.init_with_coloring(dof_handler.begin_mg(level_mg_handler),
+                                dof_handler.end_mg(level_mg_handler),
+                                constraints);
     }
-
-    typedef FilteredIterator<typename DoFHandler<dim>::active_cell_iterator> CellFilter;
-
-    std::vector<std::vector<CellFilter > > graph =
-      GraphColoringWrapper<dim>::make_graph_coloring(dof_handler,constraints);
-
-    num_colors = graph.size();
-
-    helper.setup_color_arrays(num_colors);
-
-    for(int c = 0; c < num_colors; ++c) {
-      n_cells[c] = graph[c].size();
-
-      helper.setup_cell_arrays(c);
-
-      helper.cell_loop<CellFilter>(graph[c].begin(),
-                                   graph[c].end());
-
-      // now allocate and copy stuff to the device
-
-      helper.alloc_and_copy_arrays(c);
-
-    }
-
-  }
-  else { // no coloring
-    num_colors = 1;
-
-    helper.setup_color_arrays(num_colors);
-
-    n_cells[0] = n_cells_tot;
-
-    helper.setup_cell_arrays(0);
-
-    // loop over cells and extract data
-    if(level_mg_handler != numbers::invalid_unsigned_int)
-      helper.cell_loop(dof_handler.begin_mg(level_mg_handler),
-                       dof_handler.end_mg(level_mg_handler));
     else {
       const typename DoFHandler<dim>::active_cell_iterator
         begin = dof_handler.begin_active(),
         end = dof_handler.end(); // explicitly make end() an active iterator
-      helper.cell_loop(begin,end);
+      helper.init_with_coloring(begin,end,
+                                constraints);
     }
 
-    // now allocate and copy stuff to the device
-    helper.alloc_and_copy_arrays(0);
-
   }
+  else { // no coloring
 
+    if(level_mg_handler != numbers::invalid_unsigned_int)
+      helper.init(dof_handler.begin_mg(level_mg_handler),
+                  dof_handler.end_mg(level_mg_handler),
+                  constraints);
+    else {
+      const typename DoFHandler<dim>::active_cell_iterator
+        begin = dof_handler.begin_active(),
+        end = dof_handler.end(); // explicitly make end() an active iterator
+      helper.init(begin,end,
+                  constraints);
+    }
+  }
 
   // setup row starts
   rowstart[0] = 0;
