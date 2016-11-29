@@ -60,10 +60,7 @@ typedef double level_number;
 // typedef float level_number;
 
 
-
-//=============================================================================
-// XXX: Copied from parallel_multigrid_mf.cc
-//=============================================================================
+// coarse solver
 template<typename MatrixType, typename Number>
 class MGCoarseIterative : public MGCoarseGridBase<GpuVector<Number> >
 {
@@ -89,13 +86,6 @@ public:
 
 
 //=============================================================================
-
-
-
-
-
-
-// #define USE_HANGING_NODES
 
 
 //-------------------------------------------------------------------------
@@ -435,7 +425,6 @@ void LaplaceProblem<dim,fe_degree>::solve ()
             << multigrid_memory * 1e-6
             << " MB."
             << std::endl;
-
 
   SolverControl           solver_control (10000, 1e-12*system_rhs.l2_norm());
   SolverCG<GpuVector<number> >              cg (solver_control);
