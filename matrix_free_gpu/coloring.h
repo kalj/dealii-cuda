@@ -15,13 +15,14 @@
 #include <deal.II/lac/constraint_matrix.h>
 
 
-template <int dim>
+template <int dim, typename Iterator>
 struct GraphColoringWrapper {
 public:
-  typedef dealii::FilteredIterator<typename dealii::DoFHandler<dim>::active_cell_iterator> CellFilter;
+  typedef dealii::FilteredIterator<Iterator> CellFilter;
   typedef std::vector<std::vector<CellFilter>> GraphType;
 
-  static GraphType make_graph_coloring(const dealii::DoFHandler<dim>     &dof_handler,
+  static GraphType make_graph_coloring(const Iterator     &begin,
+                                       const Iterator     &end,
                                        const dealii::ConstraintMatrix    &constraints);
 private:
   static std::vector<dealii::types::global_dof_index> get_conflict_indices (CellFilter const               &cell,
