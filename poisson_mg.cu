@@ -105,6 +105,7 @@ private:
   void assemble_system ();
   void assemble_multigrid ();
   void solve ();
+  void run_tests ();
   void output_results (const unsigned int cycle) const;
 
   typedef LaplaceOperatorGpu<dim,fe_degree,number> SystemMatrixType;
@@ -354,6 +355,116 @@ void LaplaceProblem<dim,fe_degree>::assemble_multigrid ()
 }
 
 template <int dim, int fe_degree>
+void LaplaceProblem<dim,fe_degree>::run_tests ()
+{
+  Timer time;
+
+  MGConstrainedDoFs mg_constrained_dofs;
+  mg_constrained_dofs.initialize(dof_handler);
+  std::set<types::boundary_id> bdry;
+  bdry.insert(0);
+  mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,bdry);
+
+
+
+  MGTransferMatrixFreeGpu<dim, number > mg_transfer(mg_constrained_dofs);
+  mg_transfer.build(dof_handler);
+
+  setup_time += time.wall_time();
+  time_details << "MG build transfer time     (CPU/wall) " << time()
+               << "s/" << time.wall_time() << "s\n";
+  time.restart();
+
+  // XXX: this should be with 'number' precision, but LevelMatrixType is with floats
+  MGCoarseIterative<LevelMatrixType,number> mg_coarse;
+  mg_coarse.initialize(mg_matrices[0]);
+
+  setup_time += time.wall_time();
+  time_details << "MG coarse time             (CPU/wall) " << time()
+               << "s/" << time.wall_time() << "s\n";
+  time.restart();
+
+
+  typedef PreconditionChebyshev<LevelMatrixType,GpuVector<number> > SMOOTHER;
+
+  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, GpuVector<number> >
+    mg_smoother;
+
+  MGLevelObject<typename SMOOTHER::AdditionalData> smoother_data;
+  smoother_data.resize(0, dof_handler.get_triangulation().n_global_levels()-1);
+  for (unsigned int level = 0;
+       level<dof_handler.get_triangulation().n_global_levels();
+       ++level) {
+    smoother_data[level].smoothing_range = 15.;
+    smoother_data[level].degree = 5;
+    smoother_data[level].eig_cg_n_iterations = 15;
+    smoother_data[level].preconditioner = mg_matrices[level].get_diagonal_inverse();
+  }
+
+  // temporarily disable deallog for the setup of the preconditioner that
+  // involves a CG solver for eigenvalue estimation
+  deallog.depth_file(0);
+  mg_smoother.initialize(mg_matrices, smoother_data);
+
+
+  mg::Matrix<GpuVector<number> > mg_matrix(mg_matrices);
+
+  Multigrid<GpuVector<number> > mg(mg_matrix,
+                                   mg_coarse,
+                                   mg_transfer,
+                                   mg_smoother,
+                                   mg_smoother);
+
+  PreconditionMG<dim, GpuVector<number>,
+                 MGTransferMatrixFreeGpu<dim,number> >
+                 preconditioner(dof_handler, mg, mg_transfer);
+
+
+  {
+    const unsigned int n = system_matrix.m();
+    Vector<double> vinit(n);
+    GpuVector<double> check1(n), check2(n),
+      tmp(n), check3(n);
+    {
+      for (unsigned int i=0; i<n; ++i)
+        vinit[i] = (double)rand()/RAND_MAX;
+    }
+    check1 = vinit;
+
+    system_matrix.vmult(tmp, check1);
+    tmp *= -1.0;
+    preconditioner.vmult(check2, tmp);
+    check2 += check1;
+
+    // typedef PreconditionChebyshev<LaplaceOperator<dim,double>,GpuVector<double> > SMOOTHER;
+    SMOOTHER smoother;
+    typename SMOOTHER::AdditionalData smoother_data;
+    smoother_data.preconditioner = mg_matrices[mg_matrices.max_level()].get_diagonal_inverse();
+    smoother_data.degree = 15;
+    smoother_data.eig_cg_n_iterations = 15;
+    smoother_data.smoothing_range = 20;
+
+    smoother.initialize(system_matrix, smoother_data);
+    smoother.vmult(check3, tmp);
+    check3 += check1;
+
+    DataOut<dim> data_out;
+    Vector<double> c1 = check1.toVector();
+    data_out.add_data_vector (dof_handler, c1 , "initial_field");
+    Vector<double> c2 = check2.toVector();
+    data_out.add_data_vector (dof_handler, c2, "mg_cycle");
+    Vector<double> c3 = check3.toVector();
+    data_out.add_data_vector (dof_handler, c3, "chebyshev");
+    // data_out.build_patches (data.mapping, data.fe_degree, DataOut<dim>::curved_inner_cells);
+    data_out.build_patches (fe_degree);
+    std::ofstream out(("cg_sol_" + Utilities::to_string(n)+ ".vtk").c_str());
+    data_out.write_vtk (out);
+
+  }
+
+}
+
+template <int dim, int fe_degree>
 void LaplaceProblem<dim,fe_degree>::solve ()
 {
   Timer time;
@@ -580,6 +691,9 @@ void LaplaceProblem<dim,fe_degree>::run ()
     setup_system ();
     assemble_system ();
     assemble_multigrid ();
+
+    // run_tests ();
+
     solve ();
     output_results (cycle);
 
