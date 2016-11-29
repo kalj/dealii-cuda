@@ -450,7 +450,7 @@ reinit(const Mapping<dim>        &mapping,
 
   if(level_mg_handler != numbers::invalid_unsigned_int) {
     n_dofs = dof_handler.n_dofs(level_mg_handler);
-    n_cells_tot = dof_handler.get_triangulation().n_active_cells(level_mg_handler);
+    n_cells_tot = dof_handler.get_triangulation().n_cells(level_mg_handler);
   }
   else {
     n_dofs = dof_handler.n_dofs();
