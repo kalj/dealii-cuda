@@ -97,6 +97,14 @@ private:
 
   ParallelizationScheme parallelization_scheme;
 
+  /**
+   * This option can be used to define whether we work on a certain level of the
+   * mesh, and not the active cells. If set to invalid_unsigned_int (which is
+   * the default value), the active cells are gone through, otherwise the level
+   * given by this parameter.
+   */
+  unsigned int             level_mg_handler;
+
   // stuff related to FE ...
 
   // ...and quadrature
@@ -200,7 +208,8 @@ template <int dim, typename Number>
 MatrixFreeGpu<dim,Number>::MatrixFreeGpu()
   : constrained_dofs(NULL),
     use_coloring(false),
-    rowlength(0)
+    rowlength(0),
+    level_mg_handler(numbers::invalid_unsigned_int)
 {}
 
 

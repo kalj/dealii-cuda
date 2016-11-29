@@ -11,7 +11,7 @@ GraphColoringWrapper<dim>::get_conflict_indices (GraphColoringWrapper<dim>::Cell
                                                  const ConstraintMatrix &constraints)
 {
   std::vector<types::global_dof_index> local_dof_indices(cell->get_fe().dofs_per_cell);
-  cell->get_dof_indices(local_dof_indices);
+  cell->get_active_or_mg_dof_indices(local_dof_indices);
 
   constraints.resolve_indices(local_dof_indices);
   return local_dof_indices;

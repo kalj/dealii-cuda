@@ -96,8 +96,26 @@ public:
   void setup_color_arrays(const unsigned int num_colors);
   void setup_cell_arrays(const unsigned int c);
 
+  /**
+   * Loop over all cells from begin to end and set up data structures
+   */
+  template <typename Iterator>
+  void cell_loop(const Iterator& begin, const Iterator& end);
+
+  /**
+   * Version used with coloring. In this case we want to loop over the resulting
+   * std::vector from the coloring algorithm
+   */
+  template <typename CellFilter>
+  void cell_loop(const typename std::vector<CellFilter>::iterator & begin,
+                 const typename std::vector<CellFilter>::iterator & end);
+
+  /**
+   * Called internally from cell_loop to fill in data for one cell
+   */
   template <typename T>
   void get_cell_data(const T& cell,const unsigned int cellid);
+
   void alloc_and_copy_arrays(const unsigned int c);
 };
 
@@ -167,10 +185,31 @@ void ReinitHelper<dim,Number>::setup_cell_arrays(const unsigned int c)
 }
 
 template <int dim, typename Number>
+template <typename Iterator>
+void ReinitHelper<dim,Number>::cell_loop(const Iterator& begin, const Iterator& end)
+{
+  Iterator cell=begin;
+  unsigned int cellid=0;
+  for (; cell!=end; ++cell,++cellid)
+    get_cell_data(cell,cellid);
+}
+
+template <int dim, typename Number>
+template <typename CellFilter>
+void ReinitHelper<dim,Number>::cell_loop(const typename std::vector<CellFilter>::iterator & begin,
+                                         const typename std::vector<CellFilter>::iterator & end)
+{
+  typename std::vector<CellFilter>::iterator cell=begin;
+  unsigned int cellid=0;
+  for (; cell!=end; ++cell,++cellid)
+    get_cell_data(*cell,cellid); // dereference iterator to get underlying cell_iterator
+}
+
+template <int dim, typename Number>
 template <typename T>
 void ReinitHelper<dim,Number>::get_cell_data(const T& cell, const unsigned int cellid)
 {
-  cell->get_dof_indices(local_dof_indices);
+  cell->get_active_or_mg_dof_indices(local_dof_indices);
 
   for(int i = 0; i < dofs_per_cell; ++i)
     lexicographic_dof_indices[i] = local_dof_indices[lexicographic_inv[i]];
@@ -344,8 +383,16 @@ reinit(const Mapping<dim>        &mapping,
 
   Assert(n_dofs_1d == n_q_points_1d,ExcMessage("n_q_points_1d must be equal to fe_degree+1."));
 
-  n_dofs = dof_handler.n_dofs();
-  n_cells_tot = dof_handler.get_triangulation().n_active_cells();
+  level_mg_handler = additional_data.level_mg_handler;
+
+  if(level_mg_handler != numbers::invalid_unsigned_int) {
+    n_dofs = dof_handler.n_dofs(level_mg_handler);
+    n_cells_tot = dof_handler.get_triangulation().n_active_cells(level_mg_handler);
+  }
+  else {
+    n_dofs = dof_handler.n_dofs();
+    n_cells_tot = dof_handler.get_triangulation().n_active_cells();
+  }
 
   dofs_per_cell = fe.dofs_per_cell;
   qpts_per_cell = ipowf(n_q_points_1d,dim);
@@ -375,6 +422,10 @@ reinit(const Mapping<dim>        &mapping,
   if(use_coloring) {
 
     // create graph coloring
+    if(level_mg_handler != numbers::invalid_unsigned_int) {
+      AssertThrow(false, ExcNotImplemented());
+    }
+
     typedef FilteredIterator<typename DoFHandler<dim>::active_cell_iterator> CellFilter;
 
     std::vector<std::vector<CellFilter > > graph =
@@ -389,16 +440,8 @@ reinit(const Mapping<dim>        &mapping,
 
       helper.setup_cell_arrays(c);
 
-      unsigned int cellid=0;
-
-      typename std::vector<CellFilter>::iterator
-        cell = graph[c].begin(),
-        end = graph[c].end();
-      for(; cell != end; ++cell, ++cellid)
-      {
-        helper.get_cell_data(*cell,cellid);
-      }
-
+      helper.cell_loop<CellFilter>(graph[c].begin(),
+                                   graph[c].end());
 
       // now allocate and copy stuff to the device
 
@@ -417,24 +460,25 @@ reinit(const Mapping<dim>        &mapping,
     helper.setup_cell_arrays(0);
 
     // loop over cells and extract data
-    unsigned int cellid=0;
-    typename DoFHandler<dim>::active_cell_iterator
-      cell = dof_handler.begin_active(),
-      endc = dof_handler.end();
-    for (; cell!=endc; ++cell,++cellid)
-    {
-      helper.get_cell_data(cell,cellid);
-    } // end cell loop
+    if(level_mg_handler != numbers::invalid_unsigned_int)
+      helper.cell_loop(dof_handler.begin_mg(level_mg_handler),
+                       dof_handler.end_mg(level_mg_handler));
+    else {
+      const typename DoFHandler<dim>::active_cell_iterator
+        begin = dof_handler.begin_active(),
+        end = dof_handler.end(); // explicitly make end() an active iterator
+      helper.cell_loop(begin,end);
+    }
 
     // now allocate and copy stuff to the device
     helper.alloc_and_copy_arrays(0);
 
   }
 
+
   // setup row starts
   rowstart[0] = 0;
   for(int c = 0; c < num_colors-1; ++c) {
-
     rowstart[c+1] = rowstart[c] +  n_cells[c] * get_rowlength();
   }
 
