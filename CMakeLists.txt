@@ -54,6 +54,9 @@ TARGET_LINK_LIBRARIES(test_mg_transfer ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(poisson poisson.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
 TARGET_LINK_LIBRARIES(poisson ${LIBRARIES})
 
+CUDA_ADD_EXECUTABLE(poisson_mg poisson_mg.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/mg_transfer_matrix_free_gpu.cu matrix_free_gpu/coloring.cc )
+TARGET_LINK_LIBRARIES(poisson_mg ${LIBRARIES})
+
 CUDA_ADD_EXECUTABLE(bmop bmop.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
 TARGET_LINK_LIBRARIES(bmop ${LIBRARIES})
 
@@ -68,6 +71,9 @@ TARGET_LINK_LIBRARIES(test_hanging_node_interpolation ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_dot test_dot.cpp matrix_free_gpu/gpu_vec.cu matrix_free_gpu/timing.cu)
 TARGET_LINK_LIBRARIES(test_dot ${LIBRARIES})
+
+CUDA_ADD_EXECUTABLE(poisson_mg_cpu poisson_mg_cpu.cc poisson_common.cc laplace_operator_cpu.cc)
+TARGET_LINK_LIBRARIES(poisson_mg_cpu ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_laplace_op poisson_common.cc test_laplace_op.cu laplace_operator_cpu.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc )
 TARGET_LINK_LIBRARIES(test_laplace_op ${LIBRARIES})
