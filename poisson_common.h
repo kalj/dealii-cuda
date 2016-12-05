@@ -2,6 +2,13 @@
 #ifndef _POISSON_COMMON_H
 #define _POISSON_COMMON_H
 
+#include <deal.II/base/vectorization.h>
+#include <deal.II/base/function.h>
+#include <deal.II/base/point.h>
+#include "matrix_free_gpu/maybecuda.h"
+#include "matrix_free_gpu/gpu_array.cuh"
+
+using namespace dealii;
 //=============================================================================
 // reference solution and right-hand side
 //=============================================================================
@@ -27,93 +34,6 @@ public:
                             const unsigned int  component = 0) const;
 };
 
-template <>
-const Point<1>
-Solution<1>::source_centers[Solution<1>::n_source_centers]
-= { Point<1>(-1.0 / 3.0),
-    Point<1>(0.0),
-    Point<1>(+1.0 / 3.0)   };
-
-template <>
-const Point<2>
-Solution<2>::source_centers[Solution<2>::n_source_centers]
-= { Point<2>(-0.5, +0.5),
-    Point<2>(-0.5, -0.5),
-    Point<2>(+0.5, -0.5)   };
-
-template <>
-const Point<3>
-Solution<3>::source_centers[Solution<3>::n_source_centers]
-= { Point<3>(-0.5, +0.5, 0.25),
-    Point<3>(-0.6, -0.5, -0.125),
-    Point<3>(+0.5, -0.5, 0.5)   };
-
-template <int dim>
-const double
-Solution<dim>::width = 1./3.;
-
-
-template <int dim>
-double Solution<dim>::value (const Point<dim>   &p,
-                             const unsigned int) const
-{
-  const double pi = numbers::PI;
-  double return_value = 0;
-  for (unsigned int i=0; i<this->n_source_centers; ++i)
-  {
-    const Tensor<1,dim> x_minus_xi = p - this->source_centers[i];
-    return_value += std::exp(-x_minus_xi.norm_square() /
-                             (this->width * this->width));
-  }
-
-  return return_value /
-    Utilities::fixed_power<dim>(std::sqrt(2 * pi) * this->width);
-}
-
-
-
-template <int dim>
-Tensor<1,dim> Solution<dim>::gradient (const Point<dim>   &p,
-                                       const unsigned int) const
-{
-  const double pi = numbers::PI;
-  Tensor<1,dim> return_value;
-
-  for (unsigned int i=0; i<this->n_source_centers; ++i)
-  {
-    const Tensor<1,dim> x_minus_xi = p - this->source_centers[i];
-
-    return_value += (-2 / (this->width * this->width) *
-                     std::exp(-x_minus_xi.norm_square() /
-                              (this->width * this->width)) *
-                     x_minus_xi);
-  }
-
-  return return_value / Utilities::fixed_power<dim>(std::sqrt(2 * pi) *
-                                                    this->width);
-}
-
-template <int dim>
-double Solution<dim>::laplacian (const Point<dim>   &p,
-                                 const unsigned int) const
-{
-  const double pi = numbers::PI;
-  double return_value = 0;
-  for (unsigned int i=0; i<this->n_source_centers; ++i)
-  {
-    const Tensor<1,dim> x_minus_xi = p - this->source_centers[i];
-
-    double laplacian =
-      ((-2*dim + 4*x_minus_xi.norm_square()/
-        (this->width * this->width)) /
-       (this->width * this->width) *
-       std::exp(-x_minus_xi.norm_square() /
-                (this->width * this->width)));
-    return_value += laplacian;
-  }
-  return return_value / Utilities::fixed_power<dim>(std::sqrt(2 * pi) *
-                                                    this->width);
-}
 
 //=============================================================================
 // coefficient
@@ -122,18 +42,29 @@ double Solution<dim>::laplacian (const Point<dim>   &p,
 template <int dim>
 struct Coefficient
 {
-  static __host__ double value (const Point<dim> &p){
+  static MAYBECUDA_HOST double value (const Point<dim> &p){
     return 1. / (0.05 + 2.*(p.norm_square()));
     // return 1.;
   }
 
+#ifdef MAYBECUDA_GUARD
   template <typename Number>
   static __device__ Number value (const GpuArray<dim,Number> &p){
     return 1. / (0.05 + 2.*(p.norm_square()));
     // return 1.;
   }
+#endif
 
-  static __host__  Tensor<1,dim> gradient (const Point<dim> &p){
+  template <typename Number>
+  static VectorizedArray<Number> value (const Point<dim,VectorizedArray<Number>> &p){
+    return 1. / (0.05 + 2.*(p.norm_square()));
+    // VectorizedArray<Number> a;
+    // a = 1.0;
+    // return a;
+  }
+
+
+  static MAYBECUDA_HOST  Tensor<1,dim> gradient (const Point<dim> &p){
     const Tensor<1,dim> dist = -p;
     const double den = 0.05 + 2.*dist.norm_square();
     return (4. / (den*den))*dist;
@@ -164,7 +95,7 @@ template <int dim>
 double CoefficientFun<dim>::value (const Point<dim>   &p,
                                    const unsigned int) const
 {
-  return Coefficient<dim>::value(p); // 1. / (0.05 + 2.*((p-x_c).norm_square()));
+  return Coefficient<dim>::value(p);
 }
 
 template <int dim>
