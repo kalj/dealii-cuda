@@ -380,6 +380,8 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 {
   Timer time;
 
+  typedef PreconditionChebyshev<LevelMatrixType,GpuVector<number> > SMOOTHER;
+
   MGConstrainedDoFs mg_constrained_dofs;
   mg_constrained_dofs.initialize(dof_handler);
   std::set<types::boundary_id> bdry;
@@ -406,7 +408,6 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   time.restart();
 
 
-  typedef PreconditionChebyshev<LevelMatrixType,GpuVector<number> > SMOOTHER;
 
   MGSmootherPrecondition<LevelMatrixType, SMOOTHER, GpuVector<number> >
     mg_smoother;
@@ -457,10 +458,9 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
     preconditioner.vmult(check2, tmp);
     check2 += check1;
 
-    // typedef PreconditionChebyshev<LaplaceOperator<dim,double>,GpuVector<double> > SMOOTHER;
     SMOOTHER smoother;
     typename SMOOTHER::AdditionalData smoother_data;
-    smoother_data.preconditioner = mg_matrices[mg_matrices.max_level()].get_diagonal_inverse();
+    smoother_data.preconditioner = system_matrix.get_diagonal_inverse();
     smoother_data.degree = 15;
     smoother_data.eig_cg_n_iterations = 15;
     smoother_data.smoothing_range = 20;
