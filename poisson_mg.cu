@@ -254,10 +254,17 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
+  Vector<number>     diagonal(dof_handler.n_dofs());
+  Vector<number> local_diagonal(dofs_per_cell);
+
+  std::vector<number> coefficient_values(n_q_points);
+
   Vector<number> system_rhs_host(dof_handler.n_dofs());
   RightHandSide<dim> right_hand_side;
   std::vector<double> rhs_values(n_q_points);
   std::vector<Tensor<1,dim> > solution_gradients(n_q_points);
+
+  CoefficientFun<dim> coeff;
 
   typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active(),
     endc = dof_handler.end();
@@ -266,26 +273,40 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
     cell->get_dof_indices (local_dof_indices);
     fe_values.reinit (cell);
 
+    // coefficient needed here for rhs (and diagonal)
+    coeff.value_list(fe_values.get_quadrature_points(), coefficient_values);
+
     fe_values.get_function_gradients(solution_host, solution_gradients);
     right_hand_side.value_list(fe_values.get_quadrature_points(), rhs_values);
 
     for (unsigned int i=0; i<dofs_per_cell; ++i)
     {
+      double local_diag = 0;
 
       number rhs_val = 0;
 
       for (unsigned int q=0; q<n_q_points; ++q) {
         rhs_val += ((fe_values.shape_value(i,q) * rhs_values[q]
                      - fe_values.shape_grad(i,q) * solution_gradients[q]
+                     * coefficient_values[q]
                      ) *
                     fe_values.JxW(q));
 
+        local_diag += ((fe_values.shape_grad(i,q) *
+                        fe_values.shape_grad(i,q)) *
+                       coefficient_values[q] * fe_values.JxW(q));
 
       }
+      local_diagonal(i) = local_diag;
       system_rhs_host(local_dof_indices[i]) += rhs_val;
     }
+
+    constraints.distribute_local_to_global(local_diagonal,
+                                           local_dof_indices,
+                                           diagonal);
   }
 
+  system_matrix.set_diagonal(diagonal);
 
   constraints.condense(system_rhs_host);
 
