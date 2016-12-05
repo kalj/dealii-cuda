@@ -257,7 +257,6 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   time.reset();
   time.start();
   cg.solve (system_matrix, solution_update, system_rhs,
-            // PreconditionIdentity());
             preconditioner);
 
   time.stop();
