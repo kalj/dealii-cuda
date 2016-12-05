@@ -87,3 +87,8 @@ double Solution<dim>::laplacian (const Point<dim>   &p,
   return return_value / Utilities::fixed_power<dim>(std::sqrt(2 * pi) *
                                                     this->width);
 }
+
+
+template class Solution<1> ;
+template class Solution<2> ;
+template class Solution<3> ;
