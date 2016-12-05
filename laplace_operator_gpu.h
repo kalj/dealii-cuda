@@ -15,6 +15,7 @@
 
 #include "matrix_free_gpu/defs.h"
 #include "matrix_free_gpu/gpu_vec.h"
+#include "matrix_free_gpu/gpu_array.cuh"
 #include "matrix_free_gpu/matrix_free_gpu.h"
 #include "matrix_free_gpu/fee_gpu.cuh"
 #include "matrix_free_gpu/cuda_utils.cuh"
