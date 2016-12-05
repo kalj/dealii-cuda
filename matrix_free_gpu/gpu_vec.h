@@ -38,7 +38,7 @@ public:
   GpuVector()
     : vec_dev(NULL), _size(0) {}
 
-  // initialize with size
+  // initialize with size. This sets all elements to zero
   GpuVector(unsigned int s);
 
   // copy constructor

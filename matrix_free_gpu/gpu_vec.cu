@@ -32,6 +32,7 @@ template <typename Number>
 GpuVector<Number>::GpuVector(unsigned int s)
 : _size(s) {
   CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,s*sizeof(Number)));
+  CUDA_CHECK_SUCCESS(cudaMemset(vec_dev,0,s*sizeof(Number)));
 }
 
 template <typename Number>
