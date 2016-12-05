@@ -79,7 +79,8 @@ private:
   std::shared_ptr<DiagonalMatrix<GpuVector<Number>>>  inverse_diagonal_matrix;
   bool                                                diagonal_is_available;
 
-
+  mutable GpuVector<Number>           temp_dst;
+  mutable GpuVector<Number>           temp_src;
 };
 
 
@@ -125,6 +126,9 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
                                           update_quadrature_points);
   data.reinit (dof_handler, constraints, QGauss<1>(fe_degree+1),
                additional_data);
+
+  temp_dst.reinit(data.n_constrained_dofs);
+  temp_src.reinit(data.n_constrained_dofs);
 
   evaluate_coefficient();
 }
@@ -233,13 +237,21 @@ void
 LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (GpuVector<Number>       &dst,
                                                      const GpuVector<Number> &src) const
 {
+  // save possibly non-zero values of Dirichlet values on input and output, and
+  // set input values to zero to avoid polluting output.
+  data.save_constrained_values(dst, const_cast<GpuVector<Number>&>(src),
+                               temp_src, temp_dst);
+
+  // apply laplace operator
   LocalOperator<dim,fe_degree,Number> loc_op;
   loc_op.coefficient = coefficient.getDataRO();
 
   data.cell_loop (dst,src,loc_op);
 
-  data.copy_constrained_values(dst,src);
-
+  // overwrite Dirichlet values in output with correct values, and reset input
+  // to possibly non-zero values.
+  data.load_constrained_values(dst, const_cast<GpuVector<Number>&>(src),
+                               temp_src, temp_dst);
 }
 
 // set diagonal (and set values correponding to constrained DoFs to 1)

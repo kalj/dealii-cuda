@@ -185,8 +185,16 @@ public:
                  const LocOp &loc_op) const;
 
   // set/copy values at constrained DoFs
-  void copy_constrained_values(GpuVector <Number> &dst, const GpuVector<Number> &src) const;
   void set_constrained_values(GpuVector <Number> &dst, Number val) const;
+  void copy_constrained_values(GpuVector <Number> &dst, const GpuVector<Number> &src) const;
+  void save_constrained_values(const GpuVector <Number> &output,
+                               GpuVector<Number> &input,
+                               GpuVector <Number> &tmp_output,
+                               GpuVector<Number> &tmp_input) const;
+  void load_constrained_values(GpuVector <Number> &output,
+                               GpuVector<Number> &input,
+                               const GpuVector <Number> &tmp_output,
+                               const GpuVector<Number> &tmp_input) const;
 
   void free();
 

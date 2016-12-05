@@ -586,10 +586,10 @@ void MatrixFreeGpu<dim,Number>::free()
 //=============================================================================
 
 template <typename Number>
-__global__ void copy_constrained_dofs (Number              *dst,
-                                       const Number        *src,
-                                       const unsigned int  *constrained_dofs,
-                                       const unsigned int  n_constrained_dofs)
+__global__ void copy_constrained_dofs_kernel (Number              *dst,
+                                              const Number        *src,
+                                              const unsigned int  *constrained_dofs,
+                                              const unsigned int  n_constrained_dofs)
 {
   const unsigned int dof = threadIdx.x + blockDim.x*(blockIdx.x+gridDim.x*blockIdx.y);
   if(dof < n_constrained_dofs) {
@@ -601,18 +601,21 @@ template <int dim, typename Number>
 void MatrixFreeGpu<dim,Number>::copy_constrained_values(GpuVector <Number> &dst,
                                                         const GpuVector<Number> &src) const
 {
-  copy_constrained_dofs<Number> <<<constr_grid_dim,constr_block_dim>>>(dst.getData(),src.getDataRO(),
-                                                                       constrained_dofs,
-                                                                       n_constrained_dofs);
-  CUDA_CHECK_LAST;
+  if(n_constrained_dofs != 0) {
+
+    copy_constrained_dofs_kernel<Number> <<<constr_grid_dim,constr_block_dim>>>(dst.getData(),src.getDataRO(),
+                                                                                constrained_dofs,
+                                                                                n_constrained_dofs);
+    CUDA_CHECK_LAST;
+  }
 }
 
 
 template <typename Number>
-__global__ void set_constrained_dofs (Number               *dst,
-                                      Number               val,
-                                      const unsigned int   *constrained_dofs,
-                                      const unsigned int   n_constrained_dofs)
+__global__ void set_constrained_dofs_kernel (Number               *dst,
+                                             Number               val,
+                                             const unsigned int   *constrained_dofs,
+                                             const unsigned int   n_constrained_dofs)
 {
   const unsigned int dof = threadIdx.x + blockDim.x*(blockIdx.x+gridDim.x*blockIdx.y);
   if(dof < n_constrained_dofs) {
@@ -625,8 +628,78 @@ template <int dim, typename Number>
 void MatrixFreeGpu<dim,Number>::set_constrained_values(GpuVector <Number> &dst,
                                                        Number val) const
 {
-  set_constrained_dofs<Number> <<<constr_grid_dim,constr_block_dim>>>(dst.getData(),
-                                                                      val,constrained_dofs,
-                                                                      n_constrained_dofs);
-  CUDA_CHECK_LAST;
+  if(n_constrained_dofs != 0) {
+    set_constrained_dofs_kernel<Number> <<<constr_grid_dim,constr_block_dim>>>(dst.getData(),
+                                                                               val,constrained_dofs,
+                                                                               n_constrained_dofs);
+    CUDA_CHECK_LAST;
+  }
+}
+
+template <typename Number>
+__global__ void save_constrained_dofs_kernel (const Number        *out,
+                                              Number              *in,
+                                              Number              *tmp_out,
+                                              Number              *tmp_in,
+                                              const unsigned int  *constrained_dofs,
+                                              const unsigned int   n_constrained_dofs)
+{
+  const unsigned int dof = threadIdx.x + blockDim.x*(blockIdx.x+gridDim.x*blockIdx.y);
+  if(dof < n_constrained_dofs) {
+    tmp_out[dof] = out[constrained_dofs[dof]];
+    tmp_in[dof]  = in[constrained_dofs[dof]];
+    in[constrained_dofs[dof]] = 0;
+  }
+}
+
+template <typename Number>
+__global__ void load_constrained_dofs_kernel (Number              *out,
+                                              Number              *in,
+                                              const Number        *tmp_out,
+                                              const Number        *tmp_in,
+                                              const unsigned int  *constrained_dofs,
+                                              const unsigned int   n_constrained_dofs)
+{
+  const unsigned int dof = threadIdx.x + blockDim.x*(blockIdx.x+gridDim.x*blockIdx.y);
+  if(dof < n_constrained_dofs) {
+    out[constrained_dofs[dof]] = tmp_out[dof] + tmp_in[dof];
+    in[constrained_dofs[dof]]  = tmp_in[dof];
+  }
+}
+
+
+template <int dim, typename Number>
+void MatrixFreeGpu<dim,Number>::save_constrained_values(const GpuVector <Number> &output,
+                                                        GpuVector<Number>        &input,
+                                                        GpuVector <Number>       &tmp_output,
+                                                        GpuVector<Number>        &tmp_input) const
+{
+  if(n_constrained_dofs != 0) {
+    save_constrained_dofs_kernel<Number> <<<constr_grid_dim,constr_block_dim>>>(output.getDataRO(),
+                                                                                input.getData(),
+                                                                                tmp_output.getData(),
+                                                                                tmp_input.getData(),
+                                                                                constrained_dofs,
+                                                                                n_constrained_dofs);
+    CUDA_CHECK_LAST;
+  }
+
+}
+
+
+template <int dim, typename Number>
+void MatrixFreeGpu<dim,Number>::load_constrained_values(GpuVector <Number>       &output,
+                                                        GpuVector<Number>        &input,
+                                                        const GpuVector <Number> &tmp_output,
+                                                        const GpuVector<Number>  &tmp_input) const
+{
+  if(n_constrained_dofs != 0) {
+    load_constrained_dofs_kernel<Number> <<<constr_grid_dim,constr_block_dim>>>(output.getData(),
+                                                                                input.getData(),
+                                                                                tmp_output.getDataRO(),
+                                                                                tmp_input.getDataRO(),
+                                                                                constrained_dofs,
+                                                                                n_constrained_dofs);
+    CUDA_CHECK_LAST;
+  }
 }
