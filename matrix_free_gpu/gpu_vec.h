@@ -78,9 +78,10 @@ public:
   GpuVector& operator=(const Number n);
 
   // necessary for deal.ii but shouldn't be used!
-  DevRef operator()(const size_t i) {
-    return DevRef(vec_dev+i);
-  }
+  DevRef operator()(const size_t i);
+
+  // necessary for deal.ii but shouldn't be used!
+  Number operator()(const size_t i) const;
 
   // resize to have the same structure
   // as the one provided and/or

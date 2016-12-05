@@ -170,6 +170,23 @@ void GpuVector<Number>::resize (unsigned int n)
 }
 
 
+template <typename Number>
+Number GpuVector<Number>::operator()(const size_t i) const
+{
+  Number value;
+  CUDA_CHECK_SUCCESS(cudaMemcpy(&value,vec_dev+i,sizeof(Number),
+                                cudaMemcpyDeviceToHost));
+  return value;
+}
+
+// necessary for deal.ii but shouldn't be used!
+template <typename Number>
+GpuVector<Number>::DevRef GpuVector<Number>::operator()(const size_t i)
+{
+  return GpuVector<Number>::DevRef(vec_dev+i);
+}
+
+
 //=============================================================================
 // Element wise operations (mult. with scalar, vector addition)
 //=============================================================================
