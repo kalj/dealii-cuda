@@ -84,7 +84,6 @@ private:
   GpuVector<number>                src;
   GpuVector<number>                dst;
 
-  double                           setup_time;
   ConditionalOStream               time_details;
   unsigned int                     n_iterations;
 };
@@ -106,15 +105,9 @@ LaplaceProblem<dim,fe_degree>::LaplaceProblem ()
 template <int dim, int fe_degree>
 void LaplaceProblem<dim,fe_degree>::setup_system ()
 {
-  Timer time;
-  time.start ();
-  setup_time = 0;
-
   system_matrix.clear();
 
   dof_handler.distribute_dofs (fe);
-
-
 
   constraints.clear();
   VectorTools::interpolate_boundary_values (dof_handler,
@@ -123,16 +116,11 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
                                             constraints);
   DoFTools::make_hanging_node_constraints(dof_handler,constraints);
   constraints.close();
-  setup_time += time.wall_time();
 
   system_matrix.reinit (dof_handler, constraints);
 
-
-
   dst.reinit (system_matrix.n());
   src.reinit (system_matrix.n());
-
-  setup_time += time.wall_time();
 }
 
 
