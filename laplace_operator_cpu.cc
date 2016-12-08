@@ -216,4 +216,12 @@ LaplaceOperatorCpu<dim,fe_degree,number>::memory_consumption () const
           MemoryConsumption::memory_consumption(diagonal_is_available));
 }
 
+template class LaplaceOperatorCpu<2,1,double>;
+template class LaplaceOperatorCpu<2,2,double>;
+template class LaplaceOperatorCpu<2,3,double>;
 template class LaplaceOperatorCpu<2,4,double>;
+
+template class LaplaceOperatorCpu<3,1,double>;
+template class LaplaceOperatorCpu<3,2,double>;
+template class LaplaceOperatorCpu<3,3,double>;
+template class LaplaceOperatorCpu<3,4,double>;
