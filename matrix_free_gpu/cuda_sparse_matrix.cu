@@ -1,5 +1,8 @@
 
 #include "cuda_sparse_matrix.h"
+#include "cuda_utils.cuh"
+
+#define CudaAssert(call) CUDA_CHECK_SUCCESS(call)
 
 // #ifdef DEAL_II_WITH_CUDA
 
