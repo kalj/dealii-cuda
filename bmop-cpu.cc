@@ -50,7 +50,8 @@
 #include <fstream>
 #include <sstream>
 
-
+#include "laplace_operator_cpu.h"
+#include "bmop_common.h"
 
 using namespace dealii;
 
@@ -69,303 +70,6 @@ const unsigned int dimension = 2;
 #endif
 
 
-template <int dim>
-class Coefficient : public Function<dim>
-{
-public:
-  Coefficient ()  : Function<dim>() {}
-
-  virtual double value (const Point<dim>   &p,
-                        const unsigned int  component = 0) const;
-
-  template <typename number>
-  number value (const Point<dim,number> &p,
-                const unsigned int component = 0) const;
-
-  virtual void value_list (const std::vector<Point<dim> > &points,
-                           std::vector<double>            &values,
-                           const unsigned int              component = 0) const;
-};
-
-
-
-template <int dim>
-template <typename number>
-number Coefficient<dim>::value (const Point<dim,number> &p,
-                                const unsigned int /*component*/) const
-{
-  return 1. / (0.05 + 2.*p.square());
-}
-
-
-
-template <int dim>
-double Coefficient<dim>::value (const Point<dim>  &p,
-                                const unsigned int component) const
-{
-  return value<double>(p,component);
-}
-
-
-
-template <int dim>
-void Coefficient<dim>::value_list (const std::vector<Point<dim> > &points,
-                                   std::vector<double>            &values,
-                                   const unsigned int              component) const
-{
-  Assert (values.size() == points.size(),
-          ExcDimensionMismatch (values.size(), points.size()));
-  Assert (component == 0,
-          ExcIndexRange (component, 0, 1));
-
-  const unsigned int n_points = points.size();
-  for (unsigned int i=0; i<n_points; ++i)
-    values[i] = value<double>(points[i],component);
-}
-
-
-
-
-
-template <int dim, int fe_degree, typename number>
-class LaplaceOperator : public Subscriptor
-{
-public:
-  LaplaceOperator ();
-
-  void clear();
-
-  void reinit (const DoFHandler<dim>  &dof_handler,
-               const ConstraintMatrix  &constraints
-               );
-
-  unsigned int m () const;
-  unsigned int n () const;
-
-  void vmult (Vector<double> &dst,
-              const Vector<double> &src) const;
-  void Tvmult (Vector<double> &dst,
-               const Vector<double> &src) const;
-  void vmult_add (Vector<double> &dst,
-                  const Vector<double> &src) const;
-  void Tvmult_add (Vector<double> &dst,
-                   const Vector<double> &src) const;
-
-  number el (const unsigned int row,
-             const unsigned int col) const;
-  void set_diagonal (const Vector<number> &diagonal);
-
-  const Vector<number>& get_diagonal () const {
-    Assert (diagonal_is_available == true, ExcNotInitialized());
-    return diagonal_values;
-  };
-
-  std::size_t memory_consumption () const;
-
-private:
-  void local_apply (const MatrixFree<dim,number>    &data,
-                    Vector<double>                      &dst,
-                    const Vector<double>                &src,
-                    const std::pair<unsigned int,unsigned int> &cell_range) const;
-
-  void evaluate_coefficient(const Coefficient<dim> &function);
-
-  MatrixFree<dim,number>      data;
-  Table<2, VectorizedArray<number> > coefficient;
-
-  Vector<number>  diagonal_values;
-  bool            diagonal_is_available;
-};
-
-
-
-template <int dim, int fe_degree, typename number>
-LaplaceOperator<dim,fe_degree,number>::LaplaceOperator ()
-  :
-  Subscriptor()
-{}
-
-
-
-template <int dim, int fe_degree, typename number>
-unsigned int
-LaplaceOperator<dim,fe_degree,number>::m () const
-{
-  return data.get_vector_partitioner()->size();
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-unsigned int
-LaplaceOperator<dim,fe_degree,number>::n () const
-{
-  return data.get_vector_partitioner()->size();
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-void
-LaplaceOperator<dim,fe_degree,number>::clear ()
-{
-  data.clear();
-  diagonal_is_available = false;
-  diagonal_values.reinit(0);
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-void
-LaplaceOperator<dim,fe_degree,number>::reinit (const DoFHandler<dim>  &dof_handler,
-                                               const ConstraintMatrix  &constraints)
-{
-  typename MatrixFree<dim,number>::AdditionalData additional_data;
-  additional_data.tasks_parallel_scheme =
-    MatrixFree<dim,number>::AdditionalData::partition_color;
-  additional_data.mapping_update_flags = (update_gradients | update_JxW_values |
-                                          update_quadrature_points);
-  data.reinit (dof_handler, constraints, QGauss<1>(fe_degree+1),
-               additional_data);
-  evaluate_coefficient(Coefficient<dim>());
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-void
-LaplaceOperator<dim,fe_degree,number>::
-evaluate_coefficient (const Coefficient<dim> &coefficient_function)
-{
-  const unsigned int n_cells = data.n_macro_cells();
-  FEEvaluation<dim,fe_degree,fe_degree+1,1,number> phi (data);
-  coefficient.reinit (n_cells, phi.n_q_points);
-  for (unsigned int cell=0; cell<n_cells; ++cell)
-  {
-    phi.reinit (cell);
-    for (unsigned int q=0; q<phi.n_q_points; ++q)
-      coefficient(cell,q) =
-        coefficient_function.value(phi.quadrature_point(q));
-  }
-}
-
-
-
-
-template <int dim, int fe_degree, typename number>
-void
-LaplaceOperator<dim,fe_degree,number>::
-local_apply (const MatrixFree<dim,number>         &data,
-             Vector<double>                       &dst,
-             const Vector<double>                 &src,
-             const std::pair<unsigned int,unsigned int> &cell_range) const
-{
-  FEEvaluation<dim,fe_degree,fe_degree+1,1,number> phi (data);
-
-  for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
-  {
-    phi.reinit (cell);
-    phi.read_dof_values(src);
-    phi.evaluate (false,true,false);
-    for (unsigned int q=0; q<phi.n_q_points; ++q)
-      phi.submit_gradient (coefficient(cell,q) *
-                           phi.get_gradient(q), q);
-    phi.integrate (false,true);
-    phi.distribute_local_to_global (dst);
-  }
-}
-
-
-
-
-template <int dim, int fe_degree, typename number>
-void
-LaplaceOperator<dim,fe_degree,number>::vmult (Vector<double>       &dst,
-                                              const Vector<double> &src) const
-{
-  dst = 0;
-  vmult_add (dst, src);
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-void
-LaplaceOperator<dim,fe_degree,number>::Tvmult (Vector<double>       &dst,
-                                               const Vector<double> &src) const
-{
-  dst = 0;
-  vmult_add (dst,src);
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-void
-LaplaceOperator<dim,fe_degree,number>::Tvmult_add (Vector<double>       &dst,
-                                                   const Vector<double> &src) const
-{
-  vmult_add (dst,src);
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-void
-LaplaceOperator<dim,fe_degree,number>::vmult_add (Vector<double>       &dst,
-                                                  const Vector<double> &src) const
-{
-  data.cell_loop (&LaplaceOperator::local_apply, this, dst, src);
-
-  const std::vector<unsigned int> &
-    constrained_dofs = data.get_constrained_dofs();
-  for (unsigned int i=0; i<constrained_dofs.size(); ++i)
-    dst(constrained_dofs[i]) += src(constrained_dofs[i]);
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-number
-LaplaceOperator<dim,fe_degree,number>::el (const unsigned int row,
-                                           const unsigned int col) const
-{
-  Assert (row == col, ExcNotImplemented());
-  Assert (diagonal_is_available == true, ExcNotInitialized());
-  return diagonal_values(row);
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-void
-LaplaceOperator<dim,fe_degree,number>::set_diagonal(const Vector<number> &diagonal)
-{
-  AssertDimension (m(), diagonal.size());
-
-  diagonal_values = diagonal;
-
-  const std::vector<unsigned int> &
-    constrained_dofs = data.get_constrained_dofs();
-  for (unsigned int i=0; i<constrained_dofs.size(); ++i)
-    diagonal_values(constrained_dofs[i]) = 1.0;
-
-  diagonal_is_available = true;
-}
-
-
-
-template <int dim, int fe_degree, typename number>
-std::size_t
-LaplaceOperator<dim,fe_degree,number>::memory_consumption () const
-{
-  return (data.memory_consumption () +
-          coefficient.memory_consumption() +
-          diagonal_values.memory_consumption() +
-          MemoryConsumption::memory_consumption(diagonal_is_available));
-}
-
 
 template <int dim>
 class LaplaceProblem
@@ -383,15 +87,13 @@ private:
   DoFHandler<dim>                  dof_handler;
   ConstraintMatrix                 constraints;
 
-  typedef LaplaceOperator<dim,degree_finite_element,double> SystemMatrixType;
+  typedef LaplaceOperatorCpu<dim,degree_finite_element,double> SystemMatrixType;
 
   SystemMatrixType                 system_matrix;
 
   Vector<double>                   src;
   Vector<double>                   dst;
 
-  double                           setup_time;
-  ConditionalOStream               time_details;
   unsigned int                     n_iterations;
 };
 
@@ -402,7 +104,6 @@ LaplaceProblem<dim>::LaplaceProblem ()
   :
   fe (degree_finite_element),
   dof_handler (triangulation),
-  time_details (std::cout, false),
   n_iterations(N_ITERATIONS)
 {}
 
@@ -412,15 +113,9 @@ LaplaceProblem<dim>::LaplaceProblem ()
 template <int dim>
 void LaplaceProblem<dim>::setup_system ()
 {
-  Timer time;
-  time.start ();
-  setup_time = 0;
-
   system_matrix.clear();
 
   dof_handler.distribute_dofs (fe);
-
-
 
 
   constraints.clear();
@@ -430,15 +125,11 @@ void LaplaceProblem<dim>::setup_system ()
                                             constraints);
   DoFTools::make_hanging_node_constraints(dof_handler,constraints);
   constraints.close();
-  setup_time += time.wall_time();
-  time.restart();
 
   system_matrix.reinit (dof_handler, constraints);
 
   dst.reinit (system_matrix.n());
   src.reinit (system_matrix.n());
-
-  setup_time += time.wall_time();
 
 }
 
@@ -471,86 +162,19 @@ void LaplaceProblem<dim>::run (int n_ref)
 {
 
 #ifdef BALL_GRID
-  GridGenerator::hyper_ball (triangulation);
-  static const SphericalManifold<dim> boundary;
-  triangulation.set_all_manifold_ids_on_boundary(0);
-  triangulation.set_manifold (0, boundary);
-  bool ball= true;
+  domain_case_t domain = BALL;
 #else
-  GridGenerator::hyper_cube (triangulation, -1., 1.);
-  bool ball= false;
+  domain_case_t domain = CUBE;
 #endif
-
 
 #ifdef ADAPTIVE_GRID
-  triangulation.refine_global (std::max(n_ref-2,0));
-  {
-    float reduction = 0;
-    if(ball)
-      if(dim==2)
-        reduction = 0.021;
-      else
-        reduction = 0.04;
-    else if(dim==3)
-        reduction = 0.015;
-    // the radii in this refinement are adjusted such that we hit similar number
-    // of dofs as the globally refined case on a similar situation
-
-    // refine elements inside disk of radius 0.55
-    for (typename Triangulation<dim>::active_cell_iterator
-           cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-      if (cell->is_locally_owned() &&
-          cell->center().norm() < 0.55-reduction)
-        cell->set_refine_flag();
-    triangulation.execute_coarsening_and_refinement();
-
-    // refine elements in annulus with radius 0.3 < r < 0.42
-    for (typename Triangulation<dim>::active_cell_iterator
-           cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-      if (cell->is_locally_owned() &&
-          cell->center().norm() > 0.3+reduction &&
-          cell->center().norm() < 0.42-reduction)
-        cell->set_refine_flag();
-    triangulation.execute_coarsening_and_refinement();
-
-    // refine elements in annulus with radius 0.335 < r < 0.41 (or 0.388)
-    for (typename Triangulation<dim>::active_cell_iterator
-           cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-      if (cell->is_locally_owned() &&
-          cell->center().norm() > 0.32+reduction &&
-          cell->center().norm() <  0.41-reduction)
-        cell->set_refine_flag();
-    triangulation.execute_coarsening_and_refinement();
-
-
-    {
-      Point<dim> offset;
-      for (unsigned int d=0; d<dim; ++d)
-        offset[d] = -0.1*(d+1);
-      for (typename
-             Triangulation<dim>::active_cell_iterator
-             cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-        if (cell->is_locally_owned() &&
-            cell->center().distance(offset) > 0.17+reduction &&
-            cell->center().distance(offset) < 0.33-reduction)
-          cell->set_refine_flag();
-      triangulation.execute_coarsening_and_refinement();
-
-      for (typename
-             Triangulation<dim>::active_cell_iterator
-             cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-        if (cell->is_locally_owned() &&
-            cell->center().distance(offset) > 0.21+reduction &&
-            cell->center().distance(offset) < 0.31-reduction)
-          cell->set_refine_flag();
-      triangulation.execute_coarsening_and_refinement();
-    }
-
-  }
+  bool pseudo_adaptive_grid = true;
 #else
-  triangulation.refine_global (n_ref);
+  bool pseudo_adaptive_grid = false;
 #endif
 
+  bmop_setup_mesh(triangulation, domain,
+                  pseudo_adaptive_grid, n_ref);
 
   setup_system ();
   solve ();
