@@ -83,3 +83,6 @@ TARGET_LINK_LIBRARIES(bmop ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(bmop_spm bmop_spm.cu poisson_common.cc matrix_free_gpu/cuda_sparse_matrix.cu matrix_free_gpu/gpu_vec.cu)
 TARGET_LINK_LIBRARIES(bmop_spm ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
+
+CUDA_ADD_EXECUTABLE(bmop-cpu bmop-cpu.cc laplace_operator_cpu.cc)
+TARGET_LINK_LIBRARIES(bmop-cpu ${LIBRARIES})
