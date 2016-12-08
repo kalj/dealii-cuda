@@ -37,7 +37,7 @@ if [ "$5" == "adaptive" ] ; then
 fi
 
 
-if [ $ADAPTIVE == 1 ] && [ $HANGING != 1 ] ; then
+if [ "$ADAPTIVE" == 1 ] && [ "$HANGING" != 1 ] ; then
     echo "it doesn't make sense with adaptivity without hanging node treatment!"
     exit 1
 fi
