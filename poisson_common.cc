@@ -1,5 +1,7 @@
 #include "poisson_common.h"
 
+using namespace dealii;
+
 template <>
 const Point<1>
 Solution<1>::source_centers[Solution<1>::n_source_centers]
