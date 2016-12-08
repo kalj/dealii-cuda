@@ -38,6 +38,7 @@
 #include "matrix_free_gpu/gpu_array.cuh"
 
 #include "laplace_operator_gpu.h"
+#include "bmop_common.h"
 
 using namespace dealii;
 
@@ -152,86 +153,19 @@ void LaplaceProblem<dim,fe_degree>::run (int n_ref)
 {
 
 #ifdef BALL_GRID
-  GridGenerator::hyper_ball (triangulation);
-  static const SphericalManifold<dim> boundary;
-  triangulation.set_all_manifold_ids_on_boundary(0);
-  triangulation.set_manifold (0, boundary);
-  bool ball= true;
+  domain_case_t domain = BALL;
 #else
-  GridGenerator::hyper_cube (triangulation, -1., 1.);
-  bool ball= false;
+  domain_case_t domain = CUBE;
 #endif
-
 
 #ifdef ADAPTIVE_GRID
-  triangulation.refine_global (std::max(n_ref-2,0));
-  {
-    float reduction = 0;
-    if(ball)
-      if(dim==2)
-        reduction = 0.021;
-      else
-        reduction = 0.04;
-    else if(dim==3)
-        reduction = 0.015;
-
-    // the radii in this refinement are adjusted such that we hit similar number
-    // of dofs as the globally refined case on a similar situation
-
-    // refine elements inside disk of radius 0.55
-    for (typename Triangulation<dim>::active_cell_iterator
-           cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-      if (cell->is_locally_owned() &&
-          cell->center().norm() < 0.55-reduction)
-        cell->set_refine_flag();
-    triangulation.execute_coarsening_and_refinement();
-
-    // refine elements in annulus with radius 0.3 < r < 0.42
-    for (typename Triangulation<dim>::active_cell_iterator
-           cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-      if (cell->is_locally_owned() &&
-          cell->center().norm() > 0.3+reduction &&
-          cell->center().norm() < 0.42-reduction)
-        cell->set_refine_flag();
-    triangulation.execute_coarsening_and_refinement();
-
-    // refine elements in annulus with radius 0.335 < r < 0.41 (or 0.388)
-    for (typename Triangulation<dim>::active_cell_iterator
-           cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-      if (cell->is_locally_owned() &&
-          cell->center().norm() > 0.32+reduction &&
-          cell->center().norm() <  0.41-reduction)
-        cell->set_refine_flag();
-    triangulation.execute_coarsening_and_refinement();
-
-
-    {
-      Point<dim> offset;
-      for (unsigned int d=0; d<dim; ++d)
-        offset[d] = -0.1*(d+1);
-      for (typename
-             Triangulation<dim>::active_cell_iterator
-             cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-        if (cell->is_locally_owned() &&
-            cell->center().distance(offset) > 0.17+reduction &&
-            cell->center().distance(offset) < 0.33-reduction)
-          cell->set_refine_flag();
-      triangulation.execute_coarsening_and_refinement();
-
-      for (typename
-             Triangulation<dim>::active_cell_iterator
-             cell=triangulation.begin_active(); cell != triangulation.end(); ++cell)
-        if (cell->is_locally_owned() &&
-            cell->center().distance(offset) > 0.21+reduction &&
-            cell->center().distance(offset) < 0.31-reduction)
-          cell->set_refine_flag();
-      triangulation.execute_coarsening_and_refinement();
-    }
-
-  }
+  bool pseudo_adaptive_grid = true;
 #else
-  triangulation.refine_global (n_ref);
+  bool pseudo_adaptive_grid = false;
 #endif
+
+  bmop_setup_mesh(triangulation, domain,
+                  pseudo_adaptive_grid, n_ref);
 
 
   setup_system ();
