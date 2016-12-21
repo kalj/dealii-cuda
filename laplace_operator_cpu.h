@@ -10,6 +10,8 @@
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/diagonal_matrix.h>
+#include <deal.II/matrix_free/matrix_free.h>
+
 
 using namespace dealii;
 
