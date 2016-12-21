@@ -39,7 +39,7 @@
 #include <sstream>
 
 #include "laplace_operator_cpu.h"
-
+#include "poisson_common.h"
 
 
 using namespace dealii;
@@ -238,7 +238,6 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
     for ( ; bc_it != boundary_indices[level].end(); ++bc_it)
       mg_constraints[level].add_line(*bc_it);
 
-    // FIXME: add hanging node constraints!
 
     mg_constraints[level].close();
 
@@ -418,7 +417,7 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
                << "s/" << time.wall_time() << "s\n";
   time.restart();
 
-  XXX: this should be with 'number' precision, but LevelMatrixType is with floats
+  // XXX: this should be with 'number' precision, but LevelMatrixType is with floats
   MGCoarseIterative<LevelMatrixType,number> mg_coarse;
   mg_coarse.initialize(mg_matrices[0]);
 
@@ -444,8 +443,8 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
     smoother_data[level].preconditioner = mg_matrices[level].get_diagonal_inverse();
   }
 
-  temporarily disable deallog for the setup of the preconditioner that
-  involves a CG solver for eigenvalue estimation
+  // temporarily disable deallog for the setup of the preconditioner that
+  // involves a CG solver for eigenvalue estimation
   deallog.depth_file(0);
   mg_smoother.initialize(mg_matrices, smoother_data);
 

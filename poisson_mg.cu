@@ -214,8 +214,6 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
     for ( ; bc_it != boundary_indices[level].end(); ++bc_it)
       mg_constraints[level].add_line(*bc_it);
 
-    // FIXME: add hanging node constraints!
-
     mg_constraints[level].close();
 
     mg_matrices[level].reinit(dof_handler,
