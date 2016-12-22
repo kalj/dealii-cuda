@@ -79,6 +79,10 @@ TARGET_LINK_LIBRARIES(poisson_cpu ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(poisson_mg_cpu poisson_mg_cpu.cc poisson_common.cc laplace_operator_cpu.cc)
 TARGET_LINK_LIBRARIES(poisson_mg_cpu ${LIBRARIES})
 
+CUDA_ADD_EXECUTABLE(elasticity_cpu elasticity.cc)
+TARGET_LINK_LIBRARIES(elasticity_cpu ${LIBRARIES})
+
+
 # benchmarks
 
 CUDA_ADD_EXECUTABLE(bmop bmop.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
