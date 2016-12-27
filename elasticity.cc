@@ -212,12 +212,43 @@ namespace Step8
       for (unsigned int q=0; q<phi.n_q_points; ++q) {
 
 
+        // DOES NOT WORK:
+
+        // const Tensor<2,dim,VectorizedArray<number>> grad_u = phi.get_gradient(q);
+        // phi.submit_divergence(lambda * trace(grad_u),q);
+        // phi.submit_gradient (mu * (grad_u + transpose(grad_u)),q);
+
+        // same thing:
         // const SymmetricTensor<2,dim,VectorizedArray<number>> sym_grad_u = phi.get_symmetric_gradient(q);
-        // phi.submit_symmetric_gradient(muvec * sym_grad_u, q);
-        // phi.submit_divergence(lambdavec * phi.get_divergence(q),q);
-        const Tensor<2,dim,VectorizedArray<number>> grad_u = phi.get_gradient(q);
-        phi.submit_gradient (mu * (grad_u + transpose(grad_u)),q);
-        phi.submit_divergence(lambda * trace(grad_u),q);
+        // const VectorizedArray<number> div = phi.get_divergence(q);
+
+        // phi.submit_symmetric_gradient( make_vectorized_array(2.0*mu) * sym_grad_u,q);
+        // phi.submit_divergence(lambda * div, q);
+
+
+        // THESE WORK:
+
+        // const Tensor<2,dim,VectorizedArray<number>> grad_u = phi.get_gradient(q);
+        // const VectorizedArray<number> div_u = trace(grad_u);
+
+        // Tensor<2,dim,VectorizedArray<number>> a = mu * (grad_u + transpose(grad_u));
+
+        // for(int d = 0; d < dim; ++d)
+        //   a[d][d] += lambda * div_u;
+
+        // phi.submit_gradient (a, q);
+
+        // same thing:
+        typedef VectorizedArray<number>      vec_t;
+        typedef SymmetricTensor<2,dim,vec_t> symt_t;
+
+        const symt_t sym_grad_u = phi.get_symmetric_gradient(q);
+        const vec_t  div        = phi.get_divergence(q);
+        const symt_t eye        = unit_symmetric_tensor<dim,vec_t>();
+
+        phi.submit_symmetric_gradient( make_vectorized_array(2.0*mu) * sym_grad_u
+                                       + lambda*div* eye,
+                                       q);
 
       }
 
