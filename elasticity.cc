@@ -189,9 +189,9 @@ namespace Step8
   template <int dim, int fe_degree, typename number>
   void
   ElasticityOperator<dim,fe_degree,number>::
-  local_apply (const MatrixFree<dim,number>         &data,
-               VectorType                       &dst,
-               const VectorType                 &src,
+  local_apply (const MatrixFree<dim,number>               &data,
+               VectorType                                 &dst,
+               const VectorType                           &src,
                const std::pair<unsigned int,unsigned int> &cell_range) const
   {
 
@@ -384,11 +384,12 @@ namespace Step8
 
     ConstraintMatrix     constraints;
 
+    typedef Vector<number>                           VectorType;
     typedef ElasticityOperator<dim,fe_degree,number> SystemMatrixType;
     SystemMatrixType                system_matrix;
 
-    Vector<number>       solution;
-    Vector<number>       system_rhs;
+    VectorType       solution;
+    VectorType       system_rhs;
 
     double               setup_time;
   };
@@ -503,7 +504,7 @@ namespace Step8
 
     std::vector<Tensor<1, dim> > rhs_values (n_q_points);
 
-    // Vector<number> diagonal(dof_handler.n_dofs());
+    VectorType diagonal(dof_handler.n_dofs());
 
     typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active(),
       endc = dof_handler.end();
@@ -519,7 +520,7 @@ namespace Step8
       for (unsigned int i=0; i<dofs_per_cell; ++i)
       {
         number rhs_val = 0.0;
-        // number diag_val = 0.0;
+        number diag_val = 0.0;
 
         const unsigned int
           component_i = fe.system_to_component_index(i).first;
@@ -527,26 +528,27 @@ namespace Step8
         for (unsigned int q_point=0; q_point<n_q_points;
              ++q_point)
         {
-          // diag_val +=
-          //   (
-          //    lambda * (fe_values.shape_grad(i,q_point)[component_i] * fe_values.shape_grad(i,q_point)[component_i])
-          //    + mu * (fe_values.shape_grad(i,q_point)[component_i] * fe_values.shape_grad(i,q_point)[component_i]
-          //            + fe_values.shape_grad(i,q_point) * fe_values.shape_grad(i,q_point))
-          //    ) * fe_values.JxW(q_point);
+
+          diag_val +=
+            (
+             lambda * (fe_values.shape_grad(i,q_point)[component_i] * fe_values.shape_grad(i,q_point)[component_i])
+             + mu * (fe_values.shape_grad(i,q_point)[component_i] * fe_values.shape_grad(i,q_point)[component_i]
+                     + fe_values.shape_grad(i,q_point) * fe_values.shape_grad(i,q_point))
+             ) * fe_values.JxW(q_point);
 
           rhs_val += fe_values.shape_value(i,q_point) *
             rhs_values[q_point][component_i] *
             fe_values.JxW(q_point);
         }
 
-        // diagonal(local_dof_indices[i]) += diag_val;
+        diagonal(local_dof_indices[i]) += diag_val;
         system_rhs(local_dof_indices[i]) += rhs_val;
       }
     }
 
-    // constraints.condense (diagonal);
+    constraints.condense (diagonal);
 
-    // system_matrix.set_diagonal(diagonal);
+    system_matrix.set_diagonal(diagonal);
 
     constraints.condense (system_rhs);
 
@@ -564,9 +566,12 @@ namespace Step8
     SolverControl           solver_control (2000, 1e-12);
     SolverCG<>              cg (solver_control);
 
-    PreconditionIdentity      preconditioner;
-    // PreconditionSSOR<>      preconditioner;
-    // preconditioner.initialize(system_matrix, 1.2);
+
+    typedef PreconditionChebyshev<SystemMatrixType, VectorType > PreconditionType;
+    PreconditionType preconditioner;
+    typename PreconditionType::AdditionalData additional_data;
+    preconditioner.initialize(system_matrix,additional_data);
+
 
     setup_time += time.wall_time();
     std::cout << "   Total setup time                (wall) " << setup_time
@@ -575,7 +580,8 @@ namespace Step8
     time.reset();
     time.start();
     cg.solve (system_matrix, solution, system_rhs,
-              preconditioner);
+              PreconditionIdentity());
+              // preconditioner);
 
     time.stop();
 
