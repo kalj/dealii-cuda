@@ -79,7 +79,7 @@ TARGET_LINK_LIBRARIES(poisson_cpu ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(poisson_mg_cpu poisson_mg_cpu.cc poisson_common.cc laplace_operator_cpu.cc)
 TARGET_LINK_LIBRARIES(poisson_mg_cpu ${LIBRARIES})
 
-CUDA_ADD_EXECUTABLE(elasticity_cpu elasticity.cc)
+CUDA_ADD_EXECUTABLE(elasticity_cpu elasticity_cpu.cc)
 TARGET_LINK_LIBRARIES(elasticity_cpu ${LIBRARIES})
 
 
