@@ -82,6 +82,8 @@ TARGET_LINK_LIBRARIES(poisson_mg_cpu ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(elasticity_cpu elasticity_cpu.cc)
 TARGET_LINK_LIBRARIES(elasticity_cpu ${LIBRARIES})
 
+CUDA_ADD_EXECUTABLE(elasticity elasticity.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
+TARGET_LINK_LIBRARIES(elasticity ${LIBRARIES})
 
 # benchmarks
 
