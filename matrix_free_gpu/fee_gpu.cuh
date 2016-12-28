@@ -26,6 +26,7 @@
 // few pointers, overhead is small.
 //=============================================================================
 
+template <int dim, int fe_degree, int n_components_ = 1, typename Number = double > class FEEvaluationGpu;
 
 // This is a base class containing common code and data. Subclasses implement
 // most operations.
