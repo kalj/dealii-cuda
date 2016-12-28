@@ -120,29 +120,41 @@ struct TensorOpsShmem {
   static inline __device__ void fun_at_quad_pts(Number *u)
   {
     if(dim==1) {
-      contraction<0,true,false,false,true> (u,u);
+      for(int i=0; i<n_components; ++i) {
+        contraction<0,true,false,false,true> (u[i],u[i]);
+      }
     }
     else if(dim==2) {
 
       // reduce along x / i / q - direction
-      contraction<0,true,false,false,true> (u,u);
-      __syncthreads();
+      for(int i=0; i<n_components; ++i) {
+        contraction<0,true,false,false,true> (u[i],u[i]);
+      }
+        __syncthreads();
 
-      // reduce along y / j / r - direction
-      contraction<1,true,false,false,true> (u,u);
+        // reduce along y / j / r - direction
+      for(int i=0; i<n_components; ++i) {
+        contraction<1,true,false,false,true> (u[i],u[i]);
+      }
     }
     else if(dim==3) {
 
-      // reduce along x / i / q - direction
-      contraction<0,true,false,false,true> (u,u);
-      __syncthreads();
+        // reduce along x / i / q - direction
+      for(int i=0; i<n_components; ++i) {
+        contraction<0,true,false,false,true> (u[i],u[i]);
+      }
+        __syncthreads();
 
-      // reduce along y / j / r - direction
-      contraction<1,true,false,false,true> (u,u);
-      __syncthreads();
+        // reduce along y / j / r - direction
+      for(int i=0; i<n_components; ++i) {
+        contraction<1,true,false,false,true> (u[i],u[i]);
+      }
+        __syncthreads();
 
-      // reduce along z / k / q - direction
-      contraction<2,true,false,false,true> (u,u);
+        // reduce along z / k / q - direction
+      for(int i=0; i<n_components; ++i) {
+        contraction<2,true,false,false,true> (u[i],u[i]);
+      }
     }
   }
 
@@ -150,36 +162,48 @@ struct TensorOpsShmem {
   static inline __device__ void quad_int_fun(Number *u)
   {
     if(dim==1) {
-      contraction<0,false,false,false,true> (u,u);
+      for(int i=0; i<n_components; ++i) {
+        contraction<0,false,false,false,true> (u[i],u[i]);
+      }
     }
     else if(dim==2) {
 
-      // reduce along x / i / q - direction
-      contraction<0,false,false,false,true> (u,u);
-      __syncthreads();
+        // reduce along x / i / q - direction
+      for(int i=0; i<n_components; ++i) {
+        contraction<0,false,false,false,true> (u[i],u[i]);
+      }
+        __syncthreads();
 
-      // reduce along y / j / r - direction
-      contraction<1,false,false,false,true> (u,u);
+        // reduce along y / j / r - direction
+      for(int i=0; i<n_components; ++i) {
+        contraction<1,false,false,false,true> (u[i],u[i]);
+      }
     }
     else if(dim==3) {
 
-      // reduce along x / i / q - direction
-      contraction<0,false,false,false,true> (u,u);
-      __syncthreads();
+        // reduce along x / i / q - direction
+      for(int i=0; i<n_components; ++i) {
+        contraction<0,false,false,false,true> (u[i],u[i]);
+      }
+        __syncthreads();
 
-      // reduce along y / j / r - direction
-      contraction<1,false,false,false,true> (u,u);
-      __syncthreads();
+        // reduce along y / j / r - direction
+      for(int i=0; i<n_components; ++i) {
+        contraction<1,false,false,false,true> (u[i],u[i]);
+      }
+        __syncthreads();
 
-      // reduce along z / k / s - direction
-      contraction<2,false,false,false,true> (u,u);
+        // reduce along z / k / s - direction
+      for(int i=0; i<n_components; ++i) {
+        contraction<2,false,false,false,true> (u[i],u[i]);
+      }
     }
   }
 
   static inline __device__ void grad_at_quad_pts(Number *duq[dim], const Number * const u)
   {
     if(dim==1) {
-      contraction<0,true,false,true,false> (duq[0],u);
+        contraction<0,true,false,true,false> (duq[0],u);
     }
     else if(dim==2) {
 
@@ -196,9 +220,11 @@ struct TensorOpsShmem {
     else if(dim==3) {
 
       // reduce along x / i / q - direction
-      contraction<0,true,false,true,false> (duq[0],u);
-      contraction<0,true,false,false,false> (duq[1],u);
-      contraction<0,true,false,false,false> (duq[2],u);
+      for(int i=0; i<n_components; ++i) {
+      contraction<0,true,false,true,false> (duq[i][0],u[i]);
+      contraction<0,true,false,false,false> (duq[i][1],u[i]);
+      contraction<0,true,false,false,false> (duq[i][2],u[i]);
+      }
       __syncthreads();
 
       // reduce along y / j / r - direction
