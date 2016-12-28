@@ -62,6 +62,9 @@ TARGET_LINK_LIBRARIES(test_dot ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(test_laplace_op poisson_common.cc test_laplace_op.cu laplace_operator_cpu.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc )
 TARGET_LINK_LIBRARIES(test_laplace_op ${LIBRARIES})
 
+CUDA_ADD_EXECUTABLE(test_elasticity test_elasticity.cc)
+TARGET_LINK_LIBRARIES(test_elasticity ${LIBRARIES})
+
 # solvers
 
 CUDA_ADD_EXECUTABLE(poisson_spm poisson_spm.cu poisson_common.cc matrix_free_gpu/cuda_sparse_matrix.cu matrix_free_gpu/gpu_vec.cu)
