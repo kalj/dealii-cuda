@@ -216,7 +216,7 @@ struct LocalOperator {
                               const unsigned int cell,
                               SharedData<dim,Number> *shdata) const
   {
-    FEEvaluationGpu<Number,dim,fe_degree> phi (cell, gpu_data, shdata);
+    FEEvaluationGpu<dim,fe_degree,Number> phi (cell, gpu_data, shdata);
 
     phi.read_dof_values(src);
 
