@@ -72,6 +72,9 @@ public:
   {
   }
 
+  static_assert(n_components == dim || n_components == 1,
+                "FEEvaluationGpu only implemented for scalar elements, "
+                "or elements with <dim> components");
 };
 
 
