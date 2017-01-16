@@ -53,33 +53,37 @@ typedef double level_number;
 typedef Vector<number> VectorType;
 
 
-template <typename MatrixType>
-class MGTransferPrebuiltMF : public MGTransferPrebuilt<VectorType >
+template <typename LAPLACEOPERATOR>
+class MGTransferMF : public MGTransferPrebuilt< VectorType >
 {
 public:
-  MGTransferPrebuiltMF(const MGLevelObject<MatrixType> &laplace)
+  MGTransferMF(const MGLevelObject<LAPLACEOPERATOR> &laplace,
+               const MGConstrainedDoFs &mg_constrained_dofs)
     :
+    MGTransferPrebuilt<VectorType >(mg_constrained_dofs),
     laplace_operator (laplace)
-  {};
+  {
+  }
 
   /**
    * Overload copy_to_mg from MGTransferPrebuilt to get the vectors compatible
-   * with MatrixFree and bypass the crude initialization in MGTransferPrebuilt
+   * with MatrixFree and bypass the crude vector initialization in
+   * MGTransferPrebuilt
    */
   template <int dim, class InVector, int spacedim>
   void
-  copy_to_mg (const DoFHandler<dim,spacedim> &mg_dof,
+  copy_to_mg (const DoFHandler<dim,spacedim> &mg_dof_handler,
               MGLevelObject<VectorType > &dst,
               const InVector &src) const
   {
     for (unsigned int level=dst.min_level();
          level<=dst.max_level(); ++level)
       laplace_operator[level].initialize_dof_vector(dst[level]);
-    MGTransferPrebuilt<VectorType >::copy_to_mg(mg_dof, dst, src);
+    MGTransferPrebuilt<VectorType >:: copy_to_mg(mg_dof_handler, dst, src);
   }
 
 private:
-  const MGLevelObject<MatrixType> &laplace_operator;
+  const MGLevelObject<LAPLACEOPERATOR> &laplace_operator;
 };
 
 
@@ -521,10 +525,7 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   Timer time;
 
 
-  // MGTransferPrebuiltMF<dim,LevelMatrixType> mg_transfer(mg_matrices, mg_constrained_dofs);
-  // mg_transfer.build(dof);
-
-  MGTransferPrebuiltMF<LevelMatrixType > mg_transfer(mg_matrices);//mg_constrained_dofs);
+  MGTransferMF<LevelMatrixType > mg_transfer(mg_matrices, mg_constrained_dofs);
   mg_transfer.build_matrices(dof_handler);
 
   setup_time += time.wall_time();
@@ -571,7 +572,7 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
                             mg_smoother,
                             mg_smoother);
   PreconditionMG<dim, VectorType,
-                 MGTransferPrebuiltMF<LevelMatrixType> >
+                 MGTransferMF<LevelMatrixType> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
 
@@ -628,10 +629,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
     mg_interface_matrices[level].initialize(mg_matrices[level]);
 
 
-  // MGTransferPrebuiltMF<dim,LevelMatrixType> mg_transfer(mg_matrices, mg_constrained_dofs);
-  // mg_transfer.build(dof);
-
-  MGTransferPrebuiltMF<LevelMatrixType > mg_transfer(mg_matrices);//mg_constrained_dofs);
+  MGTransferMF<LevelMatrixType > mg_transfer(mg_matrices, mg_constrained_dofs);
   mg_transfer.build_matrices(dof_handler);
 
   setup_time += time.wall_time();
@@ -684,7 +682,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   mg.set_edge_matrices(mg_interface, mg_interface);
 
   PreconditionMG<dim, VectorType,
-                 MGTransferPrebuiltMF<LevelMatrixType> >
+                 MGTransferMF<LevelMatrixType> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
   const std::size_t multigrid_memory
