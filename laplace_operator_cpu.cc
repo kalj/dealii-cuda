@@ -45,18 +45,57 @@ LaplaceOperatorCpu<dim,fe_degree,number>::clear ()
 template <int dim, int fe_degree, typename number>
 void
 LaplaceOperatorCpu<dim,fe_degree,number>::reinit (const DoFHandler<dim>  &dof_handler,
-                                               const ConstraintMatrix  &constraints,
-                                               const unsigned int      level)
+                                                  const ConstraintMatrix  &constraints)
 {
+  typename MatrixFree<dim,number>::AdditionalData additional_data;
+  additional_data.tasks_parallel_scheme =
+    MatrixFree<dim,number>::AdditionalData::partition_color;
+  additional_data.level_mg_handler = numbers::invalid_unsigned_int;
+  additional_data.mapping_update_flags = (update_gradients | update_JxW_values |
+                                          update_quadrature_points);
+
+  data.reinit (dof_handler, constraints, QGauss<1>(fe_degree+1),
+               additional_data);
+  evaluate_coefficient();
+
+  // edge constraints are handled by MatrixFree as hanging-node constraints
+  edge_constrained_indices.clear();
+  edge_constrained_values.clear();
+
+}
+
+template <int dim, int fe_degree, typename number>
+void
+LaplaceOperatorCpu<dim,fe_degree,number>::reinit (const DoFHandler<dim>    &dof_handler,
+                                                  const MGConstrainedDoFs  &mg_constrained_dofs,
+                                                  const unsigned int        level)
+{
+  // only pass boundary constraints to MatrixFree::reinit, refinement edge
+  // constraints are handled below
+  ConstraintMatrix level_constraints;
+  level_constraints.add_lines(mg_constrained_dofs.get_boundary_indices(level));
+  level_constraints.close();
+
   typename MatrixFree<dim,number>::AdditionalData additional_data;
   additional_data.tasks_parallel_scheme =
     MatrixFree<dim,number>::AdditionalData::partition_color;
   additional_data.level_mg_handler = level;
   additional_data.mapping_update_flags = (update_gradients | update_JxW_values |
                                           update_quadrature_points);
-  data.reinit (dof_handler, constraints, QGauss<1>(fe_degree+1),
+
+  data.reinit (dof_handler, level_constraints, QGauss<1>(fe_degree+1),
                additional_data);
   evaluate_coefficient();
+
+
+  edge_constrained_indices.clear();
+  edge_constrained_values.clear();
+
+  std::vector<types::global_dof_index> interface_indices;
+  mg_constrained_dofs.get_refinement_edge_indices(level).fill_index_vector(interface_indices);
+  edge_constrained_indices = interface_indices;
+  edge_constrained_values.resize(interface_indices.size());
+
 }
 
 
@@ -139,24 +178,110 @@ LaplaceOperatorCpu<dim,fe_degree,number>::Tvmult_add (VectorType       &dst,
 template <int dim, int fe_degree, typename number>
 void
 LaplaceOperatorCpu<dim,fe_degree,number>::vmult_add (VectorType       &dst,
-                                                  const VectorType &src) const
+                                                     const VectorType &src) const
 {
+  // For MG, we need to take care of internal refinement edge constraints.
+  // This means that edge DoFs are treated as homogeneous Dirichlet boundary conditions.
+  // To do this, we temporarily set them to 0, and then restore them afterwards.
+  for (unsigned int i=0; i<edge_constrained_indices.size(); ++i)
+  {
+    edge_constrained_values[i] =
+      std::pair<number,number>(src(edge_constrained_indices[i]),
+                               dst(edge_constrained_indices[i]));
+    const_cast<VectorType&>(src)(edge_constrained_indices[i]) = 0.;
+  }
+
+
   data.cell_loop (&LaplaceOperatorCpu::local_apply, this, dst, src);
 
+  // copy the real boundary Dirichlet values, which are untouched
   const std::vector<unsigned int> &
     constrained_dofs = data.get_constrained_dofs();
   for (unsigned int i=0; i<constrained_dofs.size(); ++i) {
     dst(constrained_dofs[i]) += src(constrained_dofs[i]);
-    // dst.local_element(constrained_dofs[i]) += src.local_element(constrained_dofs[i]);
+  }
+
+  // reset edge constrained values, multiply by unit matrix and add into
+  // destination
+  for (unsigned int i=0; i<edge_constrained_indices.size(); ++i)
+  {
+    const_cast<VectorType&>(src)(edge_constrained_indices[i]) = edge_constrained_values[i].first;
+    dst(edge_constrained_indices[i]) = edge_constrained_values[i].second + edge_constrained_values[i].first;
   }
 }
+
+template <int dim, int fe_degree, typename number>
+void
+LaplaceOperatorCpu<dim,fe_degree,number>::
+vmult_interface_down(VectorType       &dst,
+                     const VectorType &src) const
+{
+  dst = 0;
+
+  // set zero Dirichlet values on the refinement edges of the input vector (and
+  // remember the src and dst values because we need to reset them at the end)
+  for (unsigned int i=0; i<edge_constrained_indices.size(); ++i)
+  {
+    edge_constrained_values[i] =
+      std::pair<number,number>(src(edge_constrained_indices[i]),
+                               dst(edge_constrained_indices[i]));
+    const_cast<VectorType&>(src)(edge_constrained_indices[i]) = 0.;
+  }
+
+  data.cell_loop (&LaplaceOperatorCpu::local_apply, this, dst, src);
+
+
+  // now zero out everything except the values at the refinement edges, and
+  // restore the src values
+  unsigned int c=0;
+  for (unsigned int i=0; i<edge_constrained_indices.size(); ++i)
+  {
+    for ( ; c<edge_constrained_indices[i]; ++c)
+      dst(c) = 0.;
+    ++c;
+
+    // reset the src values
+    const_cast<VectorType&>(src)(edge_constrained_indices[i]) = edge_constrained_values[i].first;
+  }
+  for ( ; c<dst.size(); ++c)
+    dst(c) = 0.;
+}
+
+template <int dim, int fe_degree, typename number>
+void
+LaplaceOperatorCpu<dim,fe_degree,number>::
+vmult_interface_up(VectorType       &dst,
+                   const VectorType &src) const
+{
+  dst = 0;
+
+  VectorType src_cpy (src);
+  unsigned int c=0;
+  for (unsigned int i=0; i<edge_constrained_indices.size(); ++i)
+  {
+    for ( ; c<edge_constrained_indices[i]; ++c)
+      src_cpy(c) = 0.;
+    ++c;
+  }
+  for ( ; c<src_cpy.size(); ++c)
+    src_cpy(c) = 0.;
+
+  data.cell_loop (&LaplaceOperatorCpu::local_apply, this, dst, src_cpy);
+
+  for (unsigned int i=0; i<edge_constrained_indices.size(); ++i)
+  {
+    dst(edge_constrained_indices[i]) = 0.;
+  }
+}
+
+
 
 
 
 template <int dim, int fe_degree, typename number>
 number
 LaplaceOperatorCpu<dim,fe_degree,number>::el (const unsigned int row,
-                                           const unsigned int col) const
+                                              const unsigned int col) const
 {
   Assert (row == col, ExcNotImplemented());
   Assert (diagonal_is_available == true, ExcNotInitialized());

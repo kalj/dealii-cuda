@@ -30,6 +30,7 @@
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
 
+
 #include <deal.II/multigrid/mg_smoother.h>
 #include <deal.II/multigrid/mg_matrix.h>
 #include <deal.II/multigrid/multigrid.h>
@@ -52,33 +53,37 @@ typedef double level_number;
 typedef Vector<number> VectorType;
 
 
-template <typename MatrixType>
-class MGTransferPrebuiltMF : public MGTransferPrebuilt<VectorType >
+template <typename LAPLACEOPERATOR>
+class MGTransferMF : public MGTransferPrebuilt< VectorType >
 {
 public:
-  MGTransferPrebuiltMF(const MGLevelObject<MatrixType> &laplace)
+  MGTransferMF(const MGLevelObject<LAPLACEOPERATOR> &laplace,
+               const MGConstrainedDoFs &mg_constrained_dofs)
     :
+    MGTransferPrebuilt<VectorType >(mg_constrained_dofs),
     laplace_operator (laplace)
-  {};
+  {
+  }
 
   /**
    * Overload copy_to_mg from MGTransferPrebuilt to get the vectors compatible
-   * with MatrixFree and bypass the crude initialization in MGTransferPrebuilt
+   * with MatrixFree and bypass the crude vector initialization in
+   * MGTransferPrebuilt
    */
   template <int dim, class InVector, int spacedim>
   void
-  copy_to_mg (const DoFHandler<dim,spacedim> &mg_dof,
+  copy_to_mg (const DoFHandler<dim,spacedim> &mg_dof_handler,
               MGLevelObject<VectorType > &dst,
               const InVector &src) const
   {
     for (unsigned int level=dst.min_level();
          level<=dst.max_level(); ++level)
       laplace_operator[level].initialize_dof_vector(dst[level]);
-    MGTransferPrebuilt<VectorType >::copy_to_mg(mg_dof, dst, src);
+    MGTransferPrebuilt<VectorType >:: copy_to_mg(mg_dof_handler, dst, src);
   }
 
 private:
-  const MGLevelObject<MatrixType> &laplace_operator;
+  const MGLevelObject<LAPLACEOPERATOR> &laplace_operator;
 };
 
 
@@ -105,6 +110,111 @@ public:
 
   const MatrixType *coarse_matrix;
 };
+
+
+// interface operator
+  template <typename OperatorType>
+  class MyMGInterfaceOperator : public Subscriptor
+  {
+  public:
+    /**
+     * Number typedef.
+     */
+    typedef typename OperatorType::value_type value_type;
+
+    /**
+     * Default constructor.
+     */
+    MyMGInterfaceOperator();
+
+    /**
+     * Clear the pointer to the OperatorType object.
+     */
+    void clear();
+
+    /**
+     * Initialize this class with an operator @p operator_in.
+     */
+    void initialize (const OperatorType &operator_in);
+
+    /**
+     * vmult operator, see class description for more info.
+     */
+    template <typename VectorType>
+    void vmult (VectorType &dst,
+                const VectorType &src) const;
+
+    /**
+     * Tvmult operator, see class description for more info.
+     */
+    template <typename VectorType>
+    void Tvmult (VectorType &dst,
+                 const VectorType &src) const;
+
+  private:
+    /**
+     * Const pointer to the operator class.
+     */
+    SmartPointer<const OperatorType> mf_base_operator;
+  };
+
+
+  template <typename OperatorType>
+  MyMGInterfaceOperator<OperatorType>::MyMGInterfaceOperator ()
+    :
+    Subscriptor(),
+    mf_base_operator(NULL)
+  {
+  }
+
+
+
+  template <typename OperatorType>
+  void
+  MyMGInterfaceOperator<OperatorType>::clear ()
+  {
+    mf_base_operator = NULL;
+  }
+
+
+
+  template <typename OperatorType>
+  void
+  MyMGInterfaceOperator<OperatorType>::initialize (const OperatorType &operator_in)
+  {
+    mf_base_operator = &operator_in;
+  }
+
+
+
+  template <typename OperatorType>
+  template <typename VectorType>
+  void
+  MyMGInterfaceOperator<OperatorType>::vmult (VectorType &dst,
+                                            const VectorType &src) const
+  {
+    Assert(mf_base_operator != NULL,
+           ExcNotInitialized());
+
+    mf_base_operator->vmult_interface_down(dst, src);
+  }
+
+
+
+  template <typename OperatorType>
+  template <typename VectorType>
+  void
+  MyMGInterfaceOperator<OperatorType>::Tvmult (VectorType &dst,
+                                            const VectorType &src) const
+  {
+    Assert(mf_base_operator != NULL,
+           ExcNotInitialized());
+
+    mf_base_operator->vmult_interface_up(dst, src);
+  }
+
+
+
 
 
 //=============================================================================
@@ -140,7 +250,7 @@ private:
 
   SystemMatrixType                 system_matrix;
   MGLevelObject<LevelMatrixType>   mg_matrices;
-  MGLevelObject<ConstraintMatrix>  mg_constraints;
+  MGConstrainedDoFs                mg_constrained_dofs;
 
   VectorType                       solution;
   VectorType                       solution_update;
@@ -172,7 +282,6 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
 
   system_matrix.clear();
   mg_matrices.clear_elements();
-  mg_constraints.clear_elements();
 
   dof_handler.distribute_dofs (fe);
   dof_handler.distribute_mg_dofs (fe);
@@ -219,32 +328,16 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
 
   const unsigned int nlevels = triangulation.n_levels();
   mg_matrices.resize(0, nlevels-1);
-  mg_constraints.resize (0, nlevels-1);
 
-  typename FunctionMap<dim>::type dirichlet_boundary;
-  ZeroFunction<dim>               homogeneous_dirichlet_bc (1);
-  dirichlet_boundary[0] = &homogeneous_dirichlet_bc;
-
-  std::vector<std::set<types::global_dof_index> > boundary_indices(triangulation.n_levels());
-
-  MGTools::make_boundary_list (dof_handler,
-                               dirichlet_boundary,
-                               boundary_indices);
+  mg_constrained_dofs.initialize(dof_handler);
+  std::set<types::boundary_id> dirichlet_boundary;
+  dirichlet_boundary.insert(0);
+  mg_constrained_dofs.make_zero_boundary_constraints(dof_handler, dirichlet_boundary);
 
   for (unsigned int level=0; level<nlevels; ++level)
-  {
-    std::set<types::global_dof_index>::iterator bc_it = boundary_indices[level].begin();
-
-    for ( ; bc_it != boundary_indices[level].end(); ++bc_it)
-      mg_constraints[level].add_line(*bc_it);
-
-
-    mg_constraints[level].close();
-
     mg_matrices[level].reinit(dof_handler,
-                              mg_constraints[level],
+                              mg_constrained_dofs,
                               level);
-  }
 
   setup_time += time.wall_time();
   time_details << "Setup matrix-free levels   (CPU/wall) "
@@ -341,6 +434,38 @@ void LaplaceProblem<dim,fe_degree>::assemble_multigrid ()
 {
   Timer time;
 
+  // for the diagonal of the level matrices, we need a ConstraintMatrix per
+  // level
+
+  MGLevelObject<ConstraintMatrix>  mg_constraints;
+  {
+    const unsigned int nlevels = triangulation.n_levels();
+    mg_constraints.resize (0, nlevels-1);
+
+    typename FunctionMap<dim>::type dirichlet_boundary;
+    ZeroFunction<dim>               homogeneous_dirichlet_bc (1);
+    dirichlet_boundary[0] = &homogeneous_dirichlet_bc;
+
+    std::vector<std::set<types::global_dof_index> > boundary_indices(nlevels);
+
+    MGTools::make_boundary_list (dof_handler,
+                                 dirichlet_boundary,
+                                 boundary_indices);
+
+    for (unsigned int level=0; level<nlevels; ++level)
+    {
+      std::set<types::global_dof_index>::iterator bc_it = boundary_indices[level].begin();
+
+      for ( ; bc_it != boundary_indices[level].end(); ++bc_it)
+        mg_constraints[level].add_line(*bc_it);
+
+
+      mg_constraints[level].close();
+    }
+
+  }
+
+
   QGauss<dim>  quadrature_formula(fe.degree+1);
   FEValues<dim> fe_values (fe, quadrature_formula,
                            update_gradients  | update_inverse_jacobians |
@@ -399,17 +524,8 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 {
   Timer time;
 
-  MGConstrainedDoFs mg_constrained_dofs;
-  mg_constrained_dofs.initialize(dof_handler);
-  std::set<types::boundary_id> bdry;
-  bdry.insert(0);
-  mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,bdry);
 
-
-  // MGTransferPrebuiltMF<dim,LevelMatrixType> mg_transfer(mg_matrices, mg_constrained_dofs);
-  // mg_transfer.build(dof);
-
-  MGTransferPrebuiltMF<LevelMatrixType > mg_transfer(mg_matrices);//mg_constrained_dofs);
+  MGTransferMF<LevelMatrixType > mg_transfer(mg_matrices, mg_constrained_dofs);
   mg_transfer.build_matrices(dof_handler);
 
   setup_time += time.wall_time();
@@ -448,17 +564,15 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   deallog.depth_file(0);
   mg_smoother.initialize(mg_matrices, smoother_data);
 
-
   mg::Matrix<VectorType > mg_matrix(mg_matrices);
 
   Multigrid<VectorType > mg(mg_matrix,
-                                   mg_coarse,
-                                   mg_transfer,
-                                   mg_smoother,
-                                   mg_smoother);
-
+                            mg_coarse,
+                            mg_transfer,
+                            mg_smoother,
+                            mg_smoother);
   PreconditionMG<dim, VectorType,
-                 MGTransferPrebuiltMF<LevelMatrixType> >
+                 MGTransferMF<LevelMatrixType> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
 
@@ -508,17 +622,14 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 {
   Timer time;
 
-  MGConstrainedDoFs mg_constrained_dofs;
-  mg_constrained_dofs.initialize(dof_handler);
-  std::set<types::boundary_id> bdry;
-  bdry.insert(0);
-  mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,bdry);
+  MGLevelObject<MyMGInterfaceOperator<LevelMatrixType> > mg_interface_matrices;
+  // MGLevelObject<MatrixFreeOperators::MGInterfaceOperator<LevelMatrixType> > mg_interface_matrices;
+  mg_interface_matrices.resize(0, dof_handler.get_triangulation().n_global_levels()-1);
+  for (unsigned int level=0; level<dof_handler.get_triangulation().n_global_levels(); ++level)
+    mg_interface_matrices[level].initialize(mg_matrices[level]);
 
 
-  // MGTransferPrebuiltMF<dim,LevelMatrixType> mg_transfer(mg_matrices, mg_constrained_dofs);
-  // mg_transfer.build(dof);
-
-  MGTransferPrebuiltMF<LevelMatrixType > mg_transfer(mg_matrices);//mg_constrained_dofs);
+  MGTransferMF<LevelMatrixType > mg_transfer(mg_matrices, mg_constrained_dofs);
   mg_transfer.build_matrices(dof_handler);
 
   setup_time += time.wall_time();
@@ -560,14 +671,18 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
   mg::Matrix<VectorType > mg_matrix(mg_matrices);
 
+  mg::Matrix<VectorType > mg_interface(mg_interface_matrices);
+
   Multigrid<VectorType > mg(mg_matrix,
-                                   mg_coarse,
-                                   mg_transfer,
-                                   mg_smoother,
-                                   mg_smoother);
+                            mg_coarse,
+                            mg_transfer,
+                            mg_smoother,
+                            mg_smoother);
+
+  mg.set_edge_matrices(mg_interface, mg_interface);
 
   PreconditionMG<dim, VectorType,
-                 MGTransferPrebuiltMF<LevelMatrixType> >
+                 MGTransferMF<LevelMatrixType> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
   const std::size_t multigrid_memory
