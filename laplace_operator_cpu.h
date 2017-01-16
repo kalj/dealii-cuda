@@ -11,6 +11,7 @@
 #include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/diagonal_matrix.h>
 #include <deal.II/matrix_free/matrix_free.h>
+#include <deal.II/multigrid/mg_constrained_dofs.h>
 
 
 using namespace dealii;
@@ -27,14 +28,19 @@ class LaplaceOperatorCpu : public Subscriptor
 public:
   // typedef LinearAlgebra::distributed::Vector<number> VectorType;
   typedef Vector<number> VectorType;
+  typedef number         value_type;
 
   LaplaceOperatorCpu ();
 
   void clear();
 
-  void reinit (const DoFHandler<dim>  &dof_handler,
-               const ConstraintMatrix  &constraints,
-               const unsigned int      level = numbers::invalid_unsigned_int);
+  void reinit (const DoFHandler<dim>   &dof_handler,
+               const ConstraintMatrix  &constraints);
+
+
+  void reinit (const DoFHandler<dim>    &dof_handler,
+               const MGConstrainedDoFs  &mg_constrained_dofs,
+               const unsigned int        level);
 
   unsigned int m () const;
   unsigned int n () const;
@@ -47,6 +53,10 @@ public:
                   const VectorType &src) const;
   void Tvmult_add (VectorType &dst,
                    const VectorType &src) const;
+  void vmult_interface_down(VectorType       &dst,
+                            const VectorType &src) const;
+  void vmult_interface_up(VectorType       &dst,
+                          const VectorType &src) const;
 
   number el (const unsigned int row,
              const unsigned int col) const;
@@ -63,6 +73,9 @@ public:
   std::size_t memory_consumption () const;
 
 private:
+  std::vector<unsigned int> edge_constrained_indices;
+  mutable std::vector<std::pair<number,number> > edge_constrained_values;
+
   void local_apply (const MatrixFree<dim,number>    &data,
                     VectorType                      &dst,
                     const VectorType                &src,
