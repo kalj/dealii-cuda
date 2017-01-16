@@ -30,7 +30,6 @@
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
 
-#include <deal.II/matrix_free/operators.h>
 
 #include <deal.II/multigrid/mg_smoother.h>
 #include <deal.II/multigrid/mg_matrix.h>
@@ -107,6 +106,111 @@ public:
 
   const MatrixType *coarse_matrix;
 };
+
+
+// interface operator
+  template <typename OperatorType>
+  class MyMGInterfaceOperator : public Subscriptor
+  {
+  public:
+    /**
+     * Number typedef.
+     */
+    typedef typename OperatorType::value_type value_type;
+
+    /**
+     * Default constructor.
+     */
+    MyMGInterfaceOperator();
+
+    /**
+     * Clear the pointer to the OperatorType object.
+     */
+    void clear();
+
+    /**
+     * Initialize this class with an operator @p operator_in.
+     */
+    void initialize (const OperatorType &operator_in);
+
+    /**
+     * vmult operator, see class description for more info.
+     */
+    template <typename VectorType>
+    void vmult (VectorType &dst,
+                const VectorType &src) const;
+
+    /**
+     * Tvmult operator, see class description for more info.
+     */
+    template <typename VectorType>
+    void Tvmult (VectorType &dst,
+                 const VectorType &src) const;
+
+  private:
+    /**
+     * Const pointer to the operator class.
+     */
+    SmartPointer<const OperatorType> mf_base_operator;
+  };
+
+
+  template <typename OperatorType>
+  MyMGInterfaceOperator<OperatorType>::MyMGInterfaceOperator ()
+    :
+    Subscriptor(),
+    mf_base_operator(NULL)
+  {
+  }
+
+
+
+  template <typename OperatorType>
+  void
+  MyMGInterfaceOperator<OperatorType>::clear ()
+  {
+    mf_base_operator = NULL;
+  }
+
+
+
+  template <typename OperatorType>
+  void
+  MyMGInterfaceOperator<OperatorType>::initialize (const OperatorType &operator_in)
+  {
+    mf_base_operator = &operator_in;
+  }
+
+
+
+  template <typename OperatorType>
+  template <typename VectorType>
+  void
+  MyMGInterfaceOperator<OperatorType>::vmult (VectorType &dst,
+                                            const VectorType &src) const
+  {
+    Assert(mf_base_operator != NULL,
+           ExcNotInitialized());
+
+    mf_base_operator->vmult_interface_down(dst, src);
+  }
+
+
+
+  template <typename OperatorType>
+  template <typename VectorType>
+  void
+  MyMGInterfaceOperator<OperatorType>::Tvmult (VectorType &dst,
+                                            const VectorType &src) const
+  {
+    Assert(mf_base_operator != NULL,
+           ExcNotInitialized());
+
+    mf_base_operator->vmult_interface_up(dst, src);
+  }
+
+
+
 
 
 //=============================================================================
