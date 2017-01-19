@@ -10,6 +10,8 @@
 
 #include <deal.II/base/types.h>
 #include <deal.II/dofs/dof_handler.h>
+#include <deal.II/fe/fe_q.h>
+#include <deal.II/fe/fe_tools.h>
 #include "defs.h"
 #include "utils.h"
 #include "cuda_utils.cuh"
@@ -107,12 +109,6 @@ private:
 
 
 };
-
-// helper function
-template <int dim>
-void get_lex_face_mapping(std::vector<types::global_dof_index> &mapping,
-                          const unsigned int p);
-
 
 template <int dim>
 void HangingNodes<dim>::setup_line_to_cell()
@@ -223,8 +219,7 @@ void HangingNodes<dim>::setup_constraints(unsigned int &mask,
 
   std::vector<types::global_dof_index> neighbor_dofs(dofs_per_face);
 
-  std::vector<unsigned int> lex_face_mapping;
-  get_lex_face_mapping<dim> (lex_face_mapping,p);
+  std::vector<unsigned int> lex_face_mapping = FETools::lexicographic_to_hierarchic_numbering<dim-1>(FE_Q<dim-1>(p));
 
   for (unsigned int face=0; face<GeometryInfo<dim>::faces_per_cell; ++face) {
     const active_cell_iterator &
@@ -460,60 +455,6 @@ void HangingNodes<dim>::setup_constraints(unsigned int &mask,
 
 
 template <int dim>
-void get_lex_face_mapping(std::vector<types::global_dof_index> &mapping,
-                          const unsigned int p) {
-  const unsigned int n_dofs_1d = p+1;
-  if(dim==2)
-  {
-    // setup mapping to be 0,2,3,...,1
-    mapping.resize(n_dofs_1d);
-    mapping[0] = 0;
-    mapping[p] = 1;
-
-    for(int i = 0; i <p-1 ; ++i) {
-      mapping[i+1] = i+2;
-    }
-
-  }
-  else if(dim==3)
-  {
-    // setup mapping to be
-    // e.g. p=3
-    // 2 10 11 3
-    // 5 14 15 7
-    // 4 12 13 6
-    // 0  8  9 1
-
-    mapping.resize(n_dofs_1d*n_dofs_1d);
-    mapping[0] = 0;
-    mapping[p] = 1;
-    mapping[p*n_dofs_1d] = 2;
-    mapping[n_dofs_1d*n_dofs_1d-1] = 3;
-
-    int k=4;
-    for(int i = 1; i <p ; ++i, k++)
-      mapping[i*n_dofs_1d] = k;
-
-    for(int i = 1; i <p ; ++i, k++)
-      mapping[i*n_dofs_1d+p] = k;
-
-    for(int i = 1; i <p ; ++i, k++)
-      mapping[i] = k;
-
-    for(int i = 1; i <p ; ++i, k++)
-      mapping[i+p*n_dofs_1d] = k;
-
-    for(int i = 1; i <p ; ++i)
-      for(int j = 1; j <p ; ++j, k++)
-        mapping[i*n_dofs_1d+j] = k;
-
-  }
-  else {
-    ExcNotImplemented();
-  }
-}
-
-template <int dim>
 void HangingNodes<dim>::rotate_subface_index(unsigned int &subface_index, int times)
 {
   const unsigned int rot_mapping[4] = {2, 0, 3, 1};
@@ -644,8 +585,8 @@ void setup_constraint_weights(unsigned int fe_degree) {
 
   fe_q.get_subface_interpolation_matrix(fe_q,0,interpolation_matrix);
 
-  std::vector<unsigned int> mapping(fe_degree+1);
-  get_lex_face_mapping<2>(mapping,fe_degree);
+  std::vector<unsigned int> mapping =
+    FETools::lexicographic_to_hierarchic_numbering<1>(FE_Q<1>(fe_degree));
 
   FullMatrix<double> mapped_matrix(fe_q.dofs_per_face,
                                    fe_q.dofs_per_face);
