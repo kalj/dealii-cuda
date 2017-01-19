@@ -9,7 +9,8 @@
 #include <iostream>
 #include <bitset>
 #include <boost/algorithm/string/join.hpp>
-#include <deal.II/fe/fe_q.h>
+
+#include <deal.II/fe/fe_tools.h>
 
 #include "matrix_free_gpu/hanging_nodes.cuh"
 #include "matrix_free_gpu/cuda_utils.cuh"
@@ -86,18 +87,27 @@ void setup_values(Number * vec, const unsigned int mask)
 {
   const unsigned int n_dofs_1d = fe_degree+1;
 
+  FE_Q<dim> fe_q(fe_degree);
+  const std::vector< Point< dim > > &support_points = fe_q.get_unit_support_points ();
+  std::vector<unsigned int> index_mapping(fe_q.dofs_per_cell);
+  FETools::lexicographic_to_hierarchic_numbering<dim>(fe_q,index_mapping);
+
   if(dim==2) {
     if(mask & CONSTR_FACE_X) {
 
       for(int i = 0; i < n_dofs_1d; ++i) {
         unsigned int j= (mask & CONSTR_TYPE_X)? 0 : fe_degree;
 
-        Number x = Number(j)/fe_degree;
-        Number y = (Number(i)*2)/fe_degree;
+        const int idx = j + i*n_dofs_1d;
+        const Point<dim> &p = support_points[index_mapping[idx]];
+
+        Number x = p(0);
+        Number y = 2*p(1);
 
         if(!(mask & CONSTR_TYPE_Y))
           y -= 1.0;
-        vec[j + i*n_dofs_1d] = foo(x,y,1);
+
+        vec[idx] = foo(x,y,1);
       }
     }
 
@@ -106,12 +116,15 @@ void setup_values(Number * vec, const unsigned int mask)
       for(int j = 0; j < n_dofs_1d; ++j) {
         unsigned int i= (mask & CONSTR_TYPE_Y)? 0 : fe_degree;
 
-        Number x = (Number(j)*2)/fe_degree;
-        Number y = Number(i)/fe_degree;
+        const int idx = j + i*n_dofs_1d;
+        const Point<dim> &p = support_points[index_mapping[idx]];
+
+        Number x = 2*p(0);
+        Number y = p(1);
 
         if(!(mask & CONSTR_TYPE_X))
           x -= 1.0;
-        vec[j + i*n_dofs_1d] = foo(x,y,1);
+        vec[idx] = foo(x,y,1);
       }
     }
   }
@@ -123,9 +136,12 @@ void setup_values(Number * vec, const unsigned int mask)
         for(int j = 0; j < n_dofs_1d; ++j) {
           unsigned int k= (mask & CONSTR_TYPE_X)? 0 : fe_degree;
 
-          Number x = Number(k)/fe_degree;
-          Number y = Number(2*j)/fe_degree;
-          Number z = Number(2*i)/fe_degree;
+          const int idx = k+ n_dofs_1d*(j + i*n_dofs_1d);
+          const Point<dim> &p = support_points[index_mapping[idx]];
+
+          Number x = p(0);
+          Number y = 2*p(1);
+          Number z = 2*p(2);
 
           if(!(mask & CONSTR_TYPE_Y))
             y -= 1.0;
@@ -133,7 +149,7 @@ void setup_values(Number * vec, const unsigned int mask)
           if(!(mask & CONSTR_TYPE_Z))
             z -= 1.0;
 
-          vec[k+ n_dofs_1d*(j + i*n_dofs_1d)] = foo(x,y,z);
+          vec[idx] = foo(x,y,z);
         }
       }
     }
@@ -145,9 +161,12 @@ void setup_values(Number * vec, const unsigned int mask)
         for(int k = 0; k < n_dofs_1d; ++k) {
           unsigned int j= (mask & CONSTR_TYPE_Y)? 0 : fe_degree;
 
-          Number x = Number(2*k)/fe_degree;
-          Number y = Number(j)/fe_degree;
-          Number z = Number(2*i)/fe_degree;
+          const int idx = k+ n_dofs_1d*(j + i*n_dofs_1d);
+          const Point<dim> &p = support_points[index_mapping[idx]];
+
+          Number x = 2*p(0);
+          Number y = p(1);
+          Number z = 2*p(2);
 
           if(!(mask & CONSTR_TYPE_X))
             x -= 1.0;
@@ -155,7 +174,7 @@ void setup_values(Number * vec, const unsigned int mask)
           if(!(mask & CONSTR_TYPE_Z))
             z -= 1.0;
 
-          vec[k+ n_dofs_1d*(j + i*n_dofs_1d)] = foo(x,y,z);
+          vec[idx] = foo(x,y,z);
         }
       }
     }
@@ -167,9 +186,12 @@ void setup_values(Number * vec, const unsigned int mask)
         for(int k = 0; k < n_dofs_1d; ++k) {
           unsigned int i= (mask & CONSTR_TYPE_Z)? 0 : fe_degree;
 
-          Number x = Number(2*k)/fe_degree;
-          Number y = Number(2*j)/fe_degree;
-          Number z = Number(i)/fe_degree;
+          const int idx = k+ n_dofs_1d*(j + i*n_dofs_1d);
+          const Point<dim> &p = support_points[index_mapping[idx]];
+
+          Number x = 2*p(0);
+          Number y = 2*p(1);
+          Number z = p(2);
 
           if(!(mask & CONSTR_TYPE_X))
             x -= 1.0;
@@ -177,7 +199,7 @@ void setup_values(Number * vec, const unsigned int mask)
           if(!(mask & CONSTR_TYPE_Y))
             y -= 1.0;
 
-          vec[k+ n_dofs_1d*(j + i*n_dofs_1d)] = foo(x,y,z);
+          vec[idx] = foo(x,y,z);
         }
       }
     }
@@ -185,7 +207,7 @@ void setup_values(Number * vec, const unsigned int mask)
 }
 
 template <unsigned int dim, unsigned int fe_degree>
-double test_constraint(unsigned int mask, 
+double test_constraint(unsigned int mask,
                        bool verbose)
 {
   const unsigned int n_dofs_1d = fe_degree+1;
@@ -199,26 +221,18 @@ double test_constraint(unsigned int mask,
   const unsigned int size = n_dofs*sizeof(Number);
 
   // intialize data
-  if(dim==3) {
-    for(int i = 0; i < n_dofs_1d; ++i) {
-      for(int j = 0; j < n_dofs_1d; ++j) {
-        for(int k = 0; k < n_dofs_1d; ++k) {
-          Number x = Number(k)/fe_degree;
-          Number y = Number(j)/fe_degree;
-          Number z = Number(i)/fe_degree;
-          vec_host[i*n_dofs_1d*n_dofs_1d + j*n_dofs_1d + k] = foo(x,y,z);
-        }
-      }
-    }
-  }
-  else {
-    for(int i = 0; i < n_dofs_1d; ++i) {
-      for(int j = 0; j < n_dofs_1d; ++j) {
-        Number x = Number(j)/fe_degree;
-        Number y = Number(i)/fe_degree;
-        vec_host[i*n_dofs_1d + j] = foo(x,y,1);
-      }
-    }
+  FE_Q<dim> fe_q(fe_degree);
+  const std::vector< Point< dim > > &support_points = fe_q.get_unit_support_points ();
+  std::vector<unsigned int> index_mapping(fe_q.dofs_per_cell);
+  FETools::lexicographic_to_hierarchic_numbering<dim>(fe_q,index_mapping);
+
+  for(int i=0; i<fe_q.dofs_per_cell; i++) {
+    const Point<dim> &p = support_points[index_mapping[i]];
+
+    const double x = p(0);
+    const double y = p(1);
+    const double z = dim==3 ? p(2) : 1.0;
+    vec_host[i] = foo(x,y,z);
   }
 
   memcpy(ref,vec_host,size);
@@ -308,25 +322,25 @@ void loop_over_constraints(bool combinations)
 
     for(int i = 0; i < (1<<dim); ++i) {
       n++;
-      unsigned int mask = i<<3;
+      unsigned int mask = i; // set the type bits
+      // now set the face
       if(combinations)
-        mask |= xyz;
+        mask |= (xyz<<3);
       else
-        mask |= 1<<xyz;
+        mask |= 1<<(xyz+3);
 
       double err = test_constraint<dim,p>(mask,
                                           false);
 
+      // printf(" Constraint: ");
+      // print_mask(mask);
       // std::cout << "mask: " << std::bitset<6>(mask) << std::endl;
+      // printf("  Error: %g\n",err);
+      // printf("\n ");
+
       if(err > 0) {
         toterr+=err;
         allpass = false;
-        // if(err > 1e-16) {
-        //   printf(" Constraint: ");
-        //   print_mask(mask);
-        //   printf("Error: %g\n",err);
-        //   printf("\n ");
-        // }
       }
     }
   }
