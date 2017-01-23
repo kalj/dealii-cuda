@@ -723,8 +723,10 @@ MGTransferMatrixFreeGpu<dim,Number>::copy_to_mg (const DoFHandler<dim,spacedim> 
     return;
   }
 
-  for (unsigned int level=dst.max_level(); level >= dst.min_level(); --level)
+
+  for (unsigned int level=dst.max_level()+1; level != dst.min_level(); )
   {
+    --level;
     GpuVector<Number> &dst_level = dst[level];
 
     copy_with_indices(dst_level,src,
