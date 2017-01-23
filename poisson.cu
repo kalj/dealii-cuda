@@ -202,9 +202,8 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
     for (unsigned int i=0; i<dofs_per_cell; ++i)
     {
-
+      number diag_val = 0;
       number rhs_val = 0;
-      number local_diag = 0;
 
       for (unsigned int q=0; q<n_q_points; ++q) {
         rhs_val += ((fe_values.shape_value(i,q) * rhs_values[q]
@@ -214,11 +213,11 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
                     fe_values.JxW(q));
 
 
-        local_diag += ((fe_values.shape_grad(i,q) *
-                        fe_values.shape_grad(i,q)) *
-                       coefficient_values[q] * fe_values.JxW(q));
+        diag_val += ((fe_values.shape_grad(i,q) *
+                      fe_values.shape_grad(i,q)) *
+                     coefficient_values[q] * fe_values.JxW(q));
       }
-      local_diagonal(i) = local_diag;
+      local_diagonal(i) = diag_val;
       local_rhs(i) = rhs_val;
     }
 
@@ -230,8 +229,6 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
   }
 
   system_matrix.set_diagonal(diagonal);
-
-
   system_rhs = system_rhs_host;
 
   setup_time += time.wall_time();

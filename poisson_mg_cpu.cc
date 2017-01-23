@@ -358,6 +358,13 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
          it = boundary_values.begin(); it!=boundary_values.end(); ++it)
     solution(it->first) = it->second;
 
+  // compute hanging node values close to the boundary
+  ConstraintMatrix hn_constraints;
+  DoFTools::make_hanging_node_constraints(dof_handler,hn_constraints);
+  hn_constraints.close();
+
+  hn_constraints.distribute(solution);
+
   QGauss<dim>  quadrature_formula(fe.degree+1);
   FEValues<dim> fe_values (fe, quadrature_formula,
                            update_values   | update_gradients |
@@ -370,6 +377,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
   VectorType     diagonal(dof_handler.n_dofs());
   Vector<number> local_diagonal(dofs_per_cell);
+  Vector<number> local_rhs(dofs_per_cell);
 
   std::vector<number> coefficient_values(n_q_points);
 
@@ -386,16 +394,15 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
     cell->get_dof_indices (local_dof_indices);
     fe_values.reinit (cell);
 
-    fe_values.get_function_gradients(solution, solution_gradients);
-    right_hand_side.value_list(fe_values.get_quadrature_points(), rhs_values);
-
     // coefficient needed here for diagonal
     coeff.value_list(fe_values.get_quadrature_points(), coefficient_values);
 
+    fe_values.get_function_gradients(solution, solution_gradients);
+    right_hand_side.value_list(fe_values.get_quadrature_points(), rhs_values);
+
     for (unsigned int i=0; i<dofs_per_cell; ++i)
     {
-      double local_diag = 0;
-
+      double diag_val = 0;
       number rhs_val = 0;
 
       for (unsigned int q=0; q<n_q_points; ++q) {
@@ -405,22 +412,22 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
                      ) *
                     fe_values.JxW(q));
 
-        local_diag += ((fe_values.shape_grad(i,q) *
-                        fe_values.shape_grad(i,q)) *
-                       coefficient_values[q] * fe_values.JxW(q));
+        diag_val += ((fe_values.shape_grad(i,q) *
+                      fe_values.shape_grad(i,q)) *
+                     coefficient_values[q] * fe_values.JxW(q));
       }
 
-      local_diagonal(i) = local_diag;
-
-      system_rhs(local_dof_indices[i]) += rhs_val;
+      local_diagonal(i) = diag_val;
+      local_rhs(i) = rhs_val;
     }
+
+    constraints.distribute_local_to_global(local_rhs,local_dof_indices,
+                                           system_rhs);
 
     constraints.distribute_local_to_global(local_diagonal,
                                            local_dof_indices,
                                            diagonal);
   }
-
-  constraints.condense(system_rhs);
 
   system_matrix.set_diagonal(diagonal);
 

@@ -327,6 +327,14 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
          it = boundary_values.begin(); it!=boundary_values.end(); ++it)
     solution_host(it->first) = it->second;
 
+  // compute hanging node values close to the boundary
+  ConstraintMatrix hn_constraints;
+  DoFTools::make_hanging_node_constraints(dof_handler,hn_constraints);
+  hn_constraints.close();
+
+  hn_constraints.distribute(solution_host);
+
+
   QGauss<dim>  quadrature_formula(fe.degree+1);
   FEValues<dim> fe_values (fe, quadrature_formula,
                            update_values   | update_gradients |
@@ -339,6 +347,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
   Vector<number>     diagonal(dof_handler.n_dofs());
   Vector<number> local_diagonal(dofs_per_cell);
+  Vector<number> local_rhs(dofs_per_cell);
 
   std::vector<number> coefficient_values(n_q_points);
 
@@ -364,8 +373,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
     for (unsigned int i=0; i<dofs_per_cell; ++i)
     {
-      double local_diag = 0;
-
+      number diag_val = 0;
       number rhs_val = 0;
 
       for (unsigned int q=0; q<n_q_points; ++q) {
@@ -375,24 +383,23 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
                      ) *
                     fe_values.JxW(q));
 
-        local_diag += ((fe_values.shape_grad(i,q) *
-                        fe_values.shape_grad(i,q)) *
-                       coefficient_values[q] * fe_values.JxW(q));
+        diag_val += ((fe_values.shape_grad(i,q) *
+                      fe_values.shape_grad(i,q)) *
+                     coefficient_values[q] * fe_values.JxW(q));
 
       }
-      local_diagonal(i) = local_diag;
-      system_rhs_host(local_dof_indices[i]) += rhs_val;
+      local_diagonal(i) = diag_val;
+      local_rhs(i) = rhs_val;
     }
 
+    constraints.distribute_local_to_global(local_rhs,local_dof_indices,
+                                           system_rhs_host);
     constraints.distribute_local_to_global(local_diagonal,
                                            local_dof_indices,
                                            diagonal);
   }
 
   system_matrix.set_diagonal(diagonal);
-
-  constraints.condense(system_rhs_host);
-
   system_rhs = system_rhs_host;
 
   setup_time += time.wall_time();
