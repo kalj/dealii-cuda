@@ -34,6 +34,7 @@ class LaplaceOperatorGpu : public Subscriptor
 {
 public:
   typedef Number value_type;
+  typedef GpuVector<Number> VectorType;
 
   LaplaceOperatorGpu ();
 
@@ -46,14 +47,14 @@ public:
   unsigned int m () const { return data.n_dofs; }
   unsigned int n () const { return data.n_dofs; }
 
-  void vmult (GpuVector<Number> &dst,
-              const GpuVector<Number> &src) const;
-  void Tvmult (GpuVector<Number> &dst,
-               const GpuVector<Number> &src) const;
-  void vmult_add (GpuVector<Number> &dst,
-                  const GpuVector<Number> &src) const;
-  void Tvmult_add (GpuVector<Number> &dst,
-                   const GpuVector<Number> &src) const;
+  void vmult (VectorType &dst,
+              const VectorType &src) const;
+  void Tvmult (VectorType &dst,
+               const VectorType &src) const;
+  void vmult_add (VectorType &dst,
+                  const VectorType &src) const;
+  void Tvmult_add (VectorType &dst,
+                   const VectorType &src) const;
 
   // we cannot access matrix elements of a matrix free operator directly.
   Number el (const unsigned int row,
@@ -65,7 +66,7 @@ public:
   // diagonal for preconditioning
   void set_diagonal (const Vector<Number> &diagonal);
 
-  const std::shared_ptr<DiagonalMatrix<GpuVector<Number>>> get_diagonal_inverse () const;
+  const std::shared_ptr<DiagonalMatrix<VectorType>> get_diagonal_inverse () const;
 
   std::size_t memory_consumption () const;
 
@@ -75,13 +76,13 @@ private:
   void evaluate_coefficient();
 
   MatrixFreeGpu<dim,Number>   data;
-  GpuVector<Number >          coefficient;
+  VectorType                  coefficient;
 
-  std::shared_ptr<DiagonalMatrix<GpuVector<Number>>>  inverse_diagonal_matrix;
+  std::shared_ptr<DiagonalMatrix<VectorType>>  inverse_diagonal_matrix;
   bool                                                diagonal_is_available;
 
-  mutable GpuVector<Number>           temp_dst;
-  mutable GpuVector<Number>           temp_src;
+  mutable VectorType           temp_dst;
+  mutable VectorType           temp_src;
 };
 
 
@@ -91,7 +92,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::LaplaceOperatorGpu ()
   :
   Subscriptor()
 {
-  inverse_diagonal_matrix = std::make_shared<DiagonalMatrix<GpuVector<Number>>>();
+  inverse_diagonal_matrix = std::make_shared<DiagonalMatrix<VectorType>>();
 }
 
 
@@ -164,8 +165,8 @@ LaplaceOperatorGpu<dim,fe_degree,Number>:: evaluate_coefficient ()
 
 template <int dim, int fe_degree, typename Number>
 void
-LaplaceOperatorGpu<dim,fe_degree,Number>::vmult (GpuVector<Number>       &dst,
-                                                 const GpuVector<Number> &src) const
+LaplaceOperatorGpu<dim,fe_degree,Number>::vmult (VectorType       &dst,
+                                                 const VectorType &src) const
 {
   dst = 0.0;
   vmult_add (dst, src);
@@ -175,8 +176,8 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::vmult (GpuVector<Number>       &dst,
 
 template <int dim, int fe_degree, typename Number>
 void
-LaplaceOperatorGpu<dim,fe_degree,Number>::Tvmult (GpuVector<Number>       &dst,
-                                                  const GpuVector<Number> &src) const
+LaplaceOperatorGpu<dim,fe_degree,Number>::Tvmult (VectorType       &dst,
+                                                  const VectorType &src) const
 {
   dst = 0.0;
   vmult_add (dst,src);
@@ -186,8 +187,8 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::Tvmult (GpuVector<Number>       &dst,
 
 template <int dim, int fe_degree, typename Number>
 void
-LaplaceOperatorGpu<dim,fe_degree,Number>::Tvmult_add (GpuVector<Number>       &dst,
-                                                      const GpuVector<Number> &src) const
+LaplaceOperatorGpu<dim,fe_degree,Number>::Tvmult_add (VectorType       &dst,
+                                                      const VectorType &src) const
 {
   vmult_add (dst,src);
 }
@@ -235,12 +236,12 @@ struct LocalOperator {
 
 template <int dim, int fe_degree, typename Number>
 void
-LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (GpuVector<Number>       &dst,
-                                                     const GpuVector<Number> &src) const
+LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (VectorType       &dst,
+                                                     const VectorType &src) const
 {
   // save possibly non-zero values of Dirichlet values on input and output, and
   // set input values to zero to avoid polluting output.
-  data.save_constrained_values(dst, const_cast<GpuVector<Number>&>(src),
+  data.save_constrained_values(dst, const_cast<VectorTyp&>(src),
                                temp_src, temp_dst);
 
   // apply laplace operator
@@ -251,7 +252,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (GpuVector<Number>       &ds
 
   // overwrite Dirichlet values in output with correct values, and reset input
   // to possibly non-zero values.
-  data.load_constrained_values(dst, const_cast<GpuVector<Number>&>(src),
+  data.load_constrained_values(dst, const_cast<VectorType&>(src),
                                temp_src, temp_dst);
 }
 
@@ -262,11 +263,11 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::set_diagonal(const Vector<Number> &dia
 {
   AssertDimension (m(), diagonal.size());
 
-  GpuVector<Number> &diag = inverse_diagonal_matrix->get_vector();
+  VectorType &diag = inverse_diagonal_matrix->get_vector();
 
   diag.reinit(m());
   diag = 1.0;
-  diag /= GpuVector<Number>(diagonal);
+  diag /= VectorType(diagonal);
 
   data.set_constrained_values(diag,1.0);
 

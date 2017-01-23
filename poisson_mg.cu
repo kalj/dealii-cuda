@@ -56,11 +56,12 @@ using namespace dealii;
 typedef double number;
 typedef double level_number;
 // typedef float level_number;
+typedef GpuVector<number> VectorType;
 
 
 // coarse solver
 template<typename MatrixType, typename Number>
-class MGCoarseIterative : public MGCoarseGridBase<GpuVector<Number> >
+class MGCoarseIterative : public MGCoarseGridBase<VectorType >
 {
 public:
   MGCoarseIterative() {}
@@ -71,11 +72,11 @@ public:
   }
 
   virtual void operator() (const unsigned int   level,
-                           GpuVector<Number> &dst,
-                           const GpuVector<Number> &src) const
+                           VectorType &dst,
+                           const VectorType &src) const
   {
     ReductionControl solver_control (1e4, 1e-50, 1e-10);
-    SolverCG<GpuVector<Number> > solver_coarse (solver_control);
+    SolverCG<VectorType > solver_coarse (solver_control);
     solver_coarse.solve (*coarse_matrix, dst, src, PreconditionIdentity());
   }
 
@@ -119,8 +120,8 @@ private:
   MGLevelObject<ConstraintMatrix>  mg_constraints;
 
   Vector<number>                   solution_host;
-  GpuVector<number>                solution_update;
-  GpuVector<number>                system_rhs;
+  VectorType                solution_update;
+  VectorType                system_rhs;
 
   double                           setup_time;
   ConditionalOStream               time_details;
@@ -376,7 +377,7 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 {
   Timer time;
 
-  typedef PreconditionChebyshev<LevelMatrixType,GpuVector<number> > SMOOTHER;
+  typedef PreconditionChebyshev<LevelMatrixType,VectorType > SMOOTHER;
 
   MGConstrainedDoFs mg_constrained_dofs;
   mg_constrained_dofs.initialize(dof_handler);
@@ -405,7 +406,7 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 
 
 
-  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, GpuVector<number> >
+  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType >
     mg_smoother;
 
   MGLevelObject<typename SMOOTHER::AdditionalData> smoother_data;
@@ -425,15 +426,15 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   mg_smoother.initialize(mg_matrices, smoother_data);
 
 
-  mg::Matrix<GpuVector<number> > mg_matrix(mg_matrices);
+  mg::Matrix<VectorType > mg_matrix(mg_matrices);
 
-  Multigrid<GpuVector<number> > mg(mg_matrix,
+  Multigrid<VectorType > mg(mg_matrix,
                                    mg_coarse,
                                    mg_transfer,
                                    mg_smoother,
                                    mg_smoother);
 
-  PreconditionMG<dim, GpuVector<number>,
+  PreconditionMG<dim, VectorType,
                  MGTransferMatrixFreeGpu<dim,number> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
@@ -512,9 +513,9 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   time.restart();
 
 
-  typedef PreconditionChebyshev<LevelMatrixType,GpuVector<number> > SMOOTHER;
+  typedef PreconditionChebyshev<LevelMatrixType,VectorType > SMOOTHER;
 
-  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, GpuVector<number> >
+  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType >
     mg_smoother;
 
   MGLevelObject<typename SMOOTHER::AdditionalData> smoother_data;
@@ -534,15 +535,15 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   mg_smoother.initialize(mg_matrices, smoother_data);
 
 
-  mg::Matrix<GpuVector<number> > mg_matrix(mg_matrices);
+  mg::Matrix<VectorType > mg_matrix(mg_matrices);
 
-  Multigrid<GpuVector<number> > mg(mg_matrix,
-                                   mg_coarse,
-                                   mg_transfer,
-                                   mg_smoother,
-                                   mg_smoother);
+  Multigrid<VectorType > mg(mg_matrix,
+                            mg_coarse,
+                            mg_transfer,
+                            mg_smoother,
+                            mg_smoother);
 
-  PreconditionMG<dim, GpuVector<number>,
+  PreconditionMG<dim, VectorType,
                  MGTransferMatrixFreeGpu<dim,number> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
@@ -555,7 +556,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
             << std::endl;
 
   SolverControl           solver_control (10000, 1e-12*system_rhs.l2_norm());
-  SolverCG<GpuVector<number> >              cg (solver_control);
+  SolverCG<VectorType >              cg (solver_control);
   setup_time += time.wall_time();
   time_details << "Solver/prec. setup time    (CPU/wall) " << time()
                << "s/" << time.wall_time() << "s\n";
@@ -697,7 +698,7 @@ int main()
     return 1;
   }
 
-  GrowingVectorMemory<GpuVector<number> >::release_unused_memory();
+  GrowingVectorMemory<VectorType >::release_unused_memory();
 
   return 0;
 }

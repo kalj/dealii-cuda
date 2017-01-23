@@ -69,13 +69,14 @@ private:
   DoFHandler<dim>                  dof_handler;
   ConstraintMatrix                 constraints;
 
+  typedef GpuVector<number>                           VectorType;
   typedef LaplaceOperatorGpu<dim,fe_degree,number> SystemMatrixType;
 
   SystemMatrixType                 system_matrix;
 
   Vector<number>                   solution_host;
-  GpuVector<number>                solution_update;
-  GpuVector<number>                system_rhs;
+  VectorType                solution_update;
+  VectorType                system_rhs;
 
   double                           setup_time;
   ConditionalOStream               time_details;
@@ -244,7 +245,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 {
   Timer time;
 
-  typedef PreconditionChebyshev<SystemMatrixType,GpuVector<number> > PreconditionType;
+  typedef PreconditionChebyshev<SystemMatrixType,VectorType > PreconditionType;
 
   PreconditionType preconditioner;
   typename PreconditionType::AdditionalData additional_data;
@@ -254,7 +255,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   preconditioner.initialize(system_matrix,additional_data);
 
   SolverControl           solver_control (10000, 1e-12*system_rhs.l2_norm());
-  SolverCG<GpuVector<number> >              cg (solver_control);
+  SolverCG<VectorType >              cg (solver_control);
   setup_time += time.wall_time();
   time_details << "Solver/prec. setup time    (CPU/wall) " << time()
                << "s/" << time.wall_time() << "s\n";
