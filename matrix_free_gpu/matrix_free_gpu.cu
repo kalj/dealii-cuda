@@ -60,6 +60,7 @@ private:
 
   // For setting up hanging node constraints
 #ifdef MATRIX_FREE_HANGING_NODES
+  bool hanging_node_constraints_possible;
   HangingNodes<dim> hanging_nodes;
 #endif
 
@@ -83,6 +84,7 @@ public:
                  update_values | update_gradients | update_JxW_values),
       lexicographic_inv(shape_info.lexicographic_numbering),
 #ifdef MATRIX_FREE_HANGING_NODES
+      hanging_node_constraints_possible(data->level_mg_handler == numbers::invalid_unsigned_int),
       hanging_nodes(fe_degree,dof_handler,lexicographic_inv),
 #endif
       update_flags(update_flags),
@@ -243,8 +245,10 @@ void ReinitHelper<dim,Number>::setup_cell_arrays(const unsigned int c)
   if(update_flags & update_gradients)
     inv_jac_host.resize(n_cells*rowlength*dim*dim);
 
-  constraint_mask_host.resize(n_cells);
-
+#if MATRIX_FREE_HANGING_NODES
+  if(hanging_node_constraints_possible)
+    constraint_mask_host.resize(n_cells);
+#endif
 }
 
 template <int dim, typename Number>
@@ -279,9 +283,10 @@ void ReinitHelper<dim,Number>::get_cell_data(const T& cell, const unsigned int c
 
   // setup hanging nodes
 #ifdef MATRIX_FREE_HANGING_NODES
-  hanging_nodes.setup_constraints (constraint_mask_host[cellid],
-                                   lexicographic_dof_indices,
-                                   cell,cellid);
+  if(hanging_node_constraints_possible)
+    hanging_nodes.setup_constraints (constraint_mask_host[cellid],
+                                     lexicographic_dof_indices,
+                                     cell,cellid);
 #endif
 
   memcpy(&loc2glob_host[cellid*rowlength],&lexicographic_dof_indices[0],dofs_per_cell*sizeof(unsigned int));
@@ -399,7 +404,11 @@ void ReinitHelper<dim,Number>::alloc_and_copy_arrays(const unsigned int c)
                    n_cells*dim*dim*rowlength);
   }
 
-  alloc_and_copy(&data->constraint_mask[c],constraint_mask_host,n_cells);
+#ifdef MATRIX_FREE_HANGING_NODES
+  if(hanging_node_constraints_possible) {
+    alloc_and_copy(&data->constraint_mask[c],constraint_mask_host,n_cells);
+  }
+#endif
 }
 
 

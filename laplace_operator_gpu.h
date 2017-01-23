@@ -11,6 +11,7 @@
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/diagonal_matrix.h>
+#include <deal.II/multigrid/mg_constrained_dofs.h>
 
 
 #include "matrix_free_gpu/defs.h"
@@ -41,9 +42,12 @@ public:
 
   void clear();
 
-  void reinit (const DoFHandler<dim>  &dof_handler,
-               const ConstraintMatrix  &constraints,
-               const unsigned int      level = numbers::invalid_unsigned_int);
+  void reinit (const DoFHandler<dim>   &dof_handler,
+               const ConstraintMatrix  &constraints);
+
+  void reinit (const DoFHandler<dim>    &dof_handler,
+               const MGConstrainedDoFs  &mg_constrained_dofs,
+               const unsigned int        level);
 
   unsigned int m () const { return data.n_dofs; }
   unsigned int n () const { return data.n_dofs; }
@@ -56,6 +60,10 @@ public:
                   const VectorType &src) const;
   void Tvmult_add (VectorType &dst,
                    const VectorType &src) const;
+  void vmult_interface_down(VectorType       &dst,
+                            const VectorType &src) const;
+  void vmult_interface_up(VectorType       &dst,
+                          const VectorType &src) const;
 
   // we cannot access matrix elements of a matrix free operator directly.
   Number el (const unsigned int row,
@@ -73,6 +81,7 @@ public:
 
 
 private:
+  unsigned int                level;
 
   void evaluate_coefficient();
 
@@ -82,6 +91,7 @@ private:
   std::shared_ptr<DiagonalMatrix<VectorType>>  inverse_diagonal_matrix;
   bool                                                diagonal_is_available;
 
+  GpuList<unsigned int>        edge_indices;
   GpuList<unsigned int>        constrained_indices;
   mutable VectorType           constrained_values_src;
   mutable VectorType           constrained_values_dst;
@@ -109,13 +119,17 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::clear ()
 }
 
 
-
 template <int dim, int fe_degree, typename Number>
 void
-LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_handler,
-                                                  const ConstraintMatrix  &constraints,
-                                                  const unsigned int      level)
+LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>   &dof_handler,
+                                                  const ConstraintMatrix  &constraints)
 {
+  this->level = numbers::invalid_unsigned_int;
+
+  // this constructor is used for the non-Multigrid case, i.e. when this matrix
+  // is the global system matrix
+
+
   typename MatrixFreeGpu<dim,Number>::AdditionalData additional_data;
 
 #ifdef MATRIX_FREE_COLOR
@@ -125,7 +139,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
 #endif
 
   additional_data.parallelization_scheme = MatrixFreeGpu<dim,Number>::scheme_par_in_elem;
-  additional_data.level_mg_handler = level;
+  additional_data.level_mg_handler = numbers::invalid_unsigned_int;
   additional_data.mapping_update_flags = (update_gradients | update_JxW_values |
                                           update_quadrature_points);
 
@@ -147,6 +161,62 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
   }
 
   constrained_indices = constrained_dofs_host;
+
+  constrained_values_dst.reinit(constrained_indices.size());
+  constrained_values_src.reinit(constrained_indices.size());
+
+  // no edge constraints -- these are now hanging node constraints and are
+  // handled by MatrixFreeGpu
+  edge_indices.clear();
+
+  evaluate_coefficient();
+
+}
+
+
+template <int dim, int fe_degree, typename Number>
+void
+LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>    &dof_handler,
+                                                  const MGConstrainedDoFs  &mg_constrained_dofs,
+                                                  const unsigned int        level)
+{
+  this->level = level;
+
+  // Multigrid-case constructor, i.e. this matrix is a level-local matrix
+
+  typename MatrixFreeGpu<dim,Number>::AdditionalData additional_data;
+
+#ifdef MATRIX_FREE_COLOR
+  additional_data.use_coloring = true;
+#else
+  additional_data.use_coloring = false;
+#endif
+
+  additional_data.parallelization_scheme = MatrixFreeGpu<dim,Number>::scheme_par_in_elem;
+  additional_data.level_mg_handler = level;
+  additional_data.mapping_update_flags = (update_gradients | update_JxW_values |
+                                          update_quadrature_points);
+
+  // disable hanging nodes by submitting empty ConstraintMatrix
+  data.reinit (dof_handler, ConstraintMatrix(), QGauss<1>(fe_degree+1),
+               additional_data);
+
+
+  // constraints are instead handled here
+
+  std::vector<types::global_dof_index> indices;
+  IndexSet index_set;
+
+  // first set up list of DoFs on refinement edges
+  index_set = mg_constrained_dofs.get_refinement_edge_indices(level);
+  index_set.fill_index_vector(indices);
+  edge_indices = indices;
+
+  // then add also boundary DoFs to get all constrained DoFs
+  index_set.add_indices(mg_constrained_dofs.get_boundary_indices(level));
+  index_set.fill_index_vector(indices);
+  constrained_indices = indices;
+
 
   constrained_values_dst.reinit(constrained_indices.size());
   constrained_values_src.reinit(constrained_indices.size());
@@ -278,6 +348,68 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (VectorType       &dst,
   const_cast<VectorType&>(src)[constrained_indices] = constrained_values_src;
 
 }
+
+
+
+template <int dim, int fe_degree, typename Number>
+void
+LaplaceOperatorGpu<dim,fe_degree,Number>::
+vmult_interface_down(VectorType       &dst,
+                     const VectorType &src) const
+{
+  // printf("calling vmult_if_down... (level=%d)\n",level);
+
+  // set zero Dirichlet values on the refinement edges of the input vector (and
+  // remember the src values because we need to reset them at the end)
+
+  // since also the real boundary DoFs should be zeroed out, we do everything at once
+  constrained_values_src = src[constrained_indices];
+  const_cast<VectorType&>(src)[constrained_indices] = 0.0;
+
+  // use temporary destination, is all zero here
+  VectorType tmp_dst(dst.size());
+
+  // apply laplace operator
+  LocalOperator<dim,fe_degree,Number> loc_op;
+  loc_op.coefficient = coefficient.getDataRO();
+  data.cell_loop (tmp_dst,src,loc_op);
+
+
+  // now zero out everything except the values at the refinement edges,
+  dst = 0.0;
+  dst[edge_indices] = const_cast<const VectorType &>(tmp_dst)[edge_indices];
+  // dst[edge_indices] = tmp_dst[edge_indices];
+
+  // and restore the src values
+  const_cast<VectorType&>(src)[constrained_indices] = constrained_values_src;
+
+}
+
+template <int dim, int fe_degree, typename Number>
+void
+LaplaceOperatorGpu<dim,fe_degree,Number>::
+vmult_interface_up(VectorType       &dst,
+                   const VectorType &src) const
+{
+  // printf("calling vmult_if_up... (level=%d)\n",level);
+  dst = 0;
+
+  // only use values at refinement edges
+  VectorType src_cpy (src.size());
+  src_cpy[edge_indices] = src[edge_indices];
+
+
+  // apply laplace operator
+  LocalOperator<dim,fe_degree,Number> loc_op;
+  loc_op.coefficient = coefficient.getDataRO();
+
+  data.cell_loop (dst,src_cpy,loc_op);
+
+  // zero out edge values
+  // since boundary values should also be removed, do both at once.
+  dst[constrained_indices] = 0.0;
+}
+
 
 // set diagonal (and set values correponding to constrained DoFs to 1)
 template <int dim, int fe_degree, typename Number>
