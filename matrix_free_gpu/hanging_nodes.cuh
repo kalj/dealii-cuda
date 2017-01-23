@@ -695,19 +695,20 @@ __device__ inline void interpolate_boundary_3d(Number *values, const unsigned in
   const unsigned int edge  = (direction==0) ? CONSTR_EDGE_YZ :
     (direction==1) ? CONSTR_EDGE_ZX : CONSTR_EDGE_XY;
 
+  const unsigned int face1_idx  = (direction==0) ? yidx : (direction==1) ? zidx : xidx;
+  const unsigned int face2_idx  = (direction==0) ? zidx : (direction==1) ? xidx : yidx;
+
+  const bool on_face1 = (constr & face1_type) ? (face1_idx==0) : (face1_idx==fe_degree);
+  const bool on_face2 = (constr & face2_type) ? (face2_idx==0) : (face2_idx==fe_degree);
+  const bool flag = ( ((constr & face1) && on_face1) || ((constr & face2) && on_face2) ||
+                      ((constr & edge) && on_face1 && on_face2) );
+
+  Number t = 0;
+
+  __syncthreads();
+
   if( constr & (face1|face2|edge)) {
     const unsigned int interp_idx = (direction==0) ? xidx : (direction==1) ? yidx : zidx;
-    const unsigned int face1_idx  = (direction==0) ? yidx : (direction==1) ? zidx : xidx;
-    const unsigned int face2_idx  = (direction==0) ? zidx : (direction==1) ? xidx : yidx;
-
-    __syncthreads();
-
-    Number t = 0;
-
-    const bool on_face1 = (constr & face1_type) ? (face1_idx==0) : (face1_idx==fe_degree);
-    const bool on_face2 = (constr & face2_type) ? (face2_idx==0) : (face2_idx==fe_degree);
-    const bool flag = ( ((constr & face1) && on_face1) || ((constr & face2) && on_face2) ||
-                        ((constr & edge) && on_face1 && on_face2) );
 
     if(flag) {
       const bool type = constr & this_type;
@@ -742,8 +743,12 @@ __device__ inline void interpolate_boundary_3d(Number *values, const unsigned in
       }
     }
 
-    __syncthreads();
+  }
 
+  __syncthreads();
+
+
+  if( constr & (face1|face2|edge)) {
     if(flag)
       values[index3<fe_degree+1>(xidx,yidx,zidx)] = t;
   }
