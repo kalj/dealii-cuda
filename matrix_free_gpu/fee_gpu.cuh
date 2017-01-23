@@ -302,7 +302,6 @@ __device__ void FEEvaluationGpu<Number,dim,fe_degree>::read_dof_values(const Num
   values[idx] = __ldg(&src[srcidx]);
 
 #ifdef MATRIX_FREE_HANGING_NODES
-  if(constraint_mask)
     resolve_hanging_nodes_shmem<dim,fe_degree,NOTRANSPOSE>(values,constraint_mask);
 #endif
 
@@ -319,7 +318,6 @@ template <typename Number, int dim, int fe_degree>
 __device__ void FEEvaluationGpu<Number,dim,fe_degree>::distribute_local_to_global(Number *dst)
 {
 #ifdef MATRIX_FREE_HANGING_NODES
-  if(constraint_mask)
     resolve_hanging_nodes_shmem<dim,fe_degree,TRANSPOSE>(values,constraint_mask);
 #endif
 

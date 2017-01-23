@@ -757,19 +757,20 @@ __device__ inline void interpolate_boundary_2d(Number *values, const unsigned in
 
   const unsigned int this_type = (direction==0) ? CONSTR_TYPE_X : CONSTR_TYPE_Y;
 
+  const bool flag =
+    ((direction==0) && ((constr & CONSTR_TYPE_Y) ? (yidx==0) : (yidx==fe_degree))) ||
+    ((direction==1) && ((constr & CONSTR_TYPE_X) ? (xidx==0) : (xidx==fe_degree)));
+
+  Number t = 0;
+
+  __syncthreads();
+
   if(constr &
      (((direction==0) ? CONSTR_FACE_Y : 0) |
       ((direction==1) ? CONSTR_FACE_X : 0))
      ) {
 
     const unsigned int interp_idx = (direction==0) ? xidx : yidx;
-
-    __syncthreads();
-
-    Number t = 0;
-    const bool flag =
-      ((direction==0) && ((constr & CONSTR_TYPE_Y) ? (yidx==0) : (yidx==fe_degree))) ||
-      ((direction==1) && ((constr & CONSTR_TYPE_X) ? (xidx==0) : (xidx==fe_degree)));
 
     if(flag) {
       const bool type = constr & this_type;
@@ -798,8 +799,14 @@ __device__ inline void interpolate_boundary_2d(Number *values, const unsigned in
         }
     }
 
-    __syncthreads();
+  }
 
+  __syncthreads();
+
+  if(constr &
+     (((direction==0) ? CONSTR_FACE_Y : 0) |
+      ((direction==1) ? CONSTR_FACE_X : 0))
+     ) {
     if(flag) values[index2<fe_degree+1>(xidx,yidx)] = t;
   }
 }
