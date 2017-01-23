@@ -12,9 +12,17 @@
 #include <deal.II/lac/vector.h>
 #include <deal.II/base/subscriptor.h>
 #include <cstddef>
+
+#include "gpu_list.h"
+
 using namespace dealii;
 
-
+// forward declarations
+template <typename Number> class VecSlice;
+template <typename Number> class ConstVecSlice;
+template <typename Number> class VecSlicePlusVecSlice;
+template <typename Number> class VecSlicePlusVec;
+template <typename Number> class VecPlusVec;
 
 template <typename Number>
 class GpuVector : public Subscriptor {
@@ -32,7 +40,7 @@ public:
   };
 private:
   Number *vec_dev;
-  int _size;
+  unsigned int _size;
 public:
   // constructors et al.
   GpuVector()
@@ -56,7 +64,7 @@ public:
 
   ~GpuVector();
 
-  int size() const { return _size;}
+  unsigned int size() const { return _size;}
 
   // assigns this object in-place to a CPU object
   void copyToHost(Vector<Number>& dst) const;
@@ -105,6 +113,14 @@ public:
   void sadd (const Number s,
              const Number a,
              const GpuVector<Number> &V);
+
+
+  // operations with slices
+  VecSlice<Number> operator[](const GpuList<unsigned int> indices);
+  const ConstVecSlice<Number> operator[](const GpuList<unsigned int> indices) const;
+  GpuVector<Number>& operator=(const ConstVecSlice<Number> &other);
+  GpuVector<Number>& operator=(const VecSlicePlusVecSlice<Number> &other);
+  GpuVector<Number>& operator=(const VecSlicePlusVec<Number> &other);
 
   // addition of vectors
   GpuVector<Number>& operator+=(const GpuVector<Number> &x) { sadd(1,1,x); return (*this); }
@@ -160,5 +176,87 @@ public:
   IndexSet locally_owned_elements() const { return complete_index_set(size()); }
   void compress(::VectorOperation::values   operation = ::VectorOperation::unknown) const { }
 };
+
+
+template <typename Number>
+struct VecSlice
+{
+  GpuVector<Number> &vec;
+  const GpuList<unsigned int> &idx;
+
+  VecSlice(GpuVector<Number> &v,
+           const GpuList<unsigned int> &i);
+
+  VecSlice<Number>& operator=(const ConstVecSlice<Number> &other);
+  VecSlice<Number>& operator=(const VecSlicePlusVecSlice<Number> &other);
+  VecSlice<Number>& operator=(const VecSlicePlusVec<Number> &other);
+  VecSlice<Number>& operator=(const VecPlusVec<Number> &other);
+  VecSlice<Number>& operator=(const Number a);
+  VecSlice<Number>& operator=(const GpuVector<Number> &other);
+};
+
+template <typename Number>
+struct ConstVecSlice
+{
+  const GpuVector<Number> &vec;
+  const GpuList<unsigned int> &idx;
+
+  ConstVecSlice(const GpuVector<Number> &v,
+                const GpuList<unsigned int> &i);
+  // ConstVecSlice(const VecSlice<Number>& other);
+};
+
+
+template <typename Number>
+struct VecSlicePlusVecSlice
+{
+  const GpuVector<Number> &vec1;
+  const GpuList<unsigned int> &idx1;
+  const GpuVector<Number> &vec2;
+  const GpuList<unsigned int> &idx2;
+
+  VecSlicePlusVecSlice(const GpuVector<Number> &v1,
+                       const GpuList<unsigned int> &i1,
+                       const GpuVector<Number> &v2,
+                       const GpuList<unsigned int> &i2);
+};
+
+template <typename Number>
+struct VecSlicePlusVec
+{
+  const GpuVector<Number> &vec1;
+  const GpuList<unsigned int> &idx1;
+  const GpuVector<Number> &vec2;
+
+  VecSlicePlusVec(const GpuVector<Number> &v1,
+                  const GpuList<unsigned int> &i1,
+                  const GpuVector<Number> &v2);
+};
+
+template <typename Number>
+struct VecPlusVec
+{
+  const GpuVector<Number> &vec1;
+  const GpuVector<Number> &vec2;
+
+  VecPlusVec(const GpuVector<Number> &v1,
+             const GpuVector<Number> &v2);
+};
+
+
+template <typename Number>
+VecSlicePlusVecSlice<Number> operator+(const ConstVecSlice<Number> l, const ConstVecSlice<Number> r);
+
+template <typename Number>
+VecSlicePlusVec<Number> operator+(const ConstVecSlice<Number> l, const GpuVector<Number>& r);
+
+template <typename Number>
+VecPlusVec<Number> operator+(const GpuVector<Number>& l, const GpuVector<Number>& r);
+
+template <typename Number>
+void copy_with_indices(GpuVector<Number> &dst, const GpuVector<Number> &src,
+                       const GpuList<int> &dst_indices, const GpuList<int> &src_indices);
+
+
 
 #endif /* _GPUVEC_H */

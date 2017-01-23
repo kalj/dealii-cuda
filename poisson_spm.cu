@@ -161,6 +161,12 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
          it = boundary_values.begin(); it!=boundary_values.end(); ++it)
     solution_host(it->first) = it->second;
 
+  // compute hanging node values close to the boundary
+  ConstraintMatrix hn_constraints;
+  DoFTools::make_hanging_node_constraints(dof_handler,hn_constraints);
+  hn_constraints.close();
+
+  hn_constraints.distribute(solution_host);
 
   // assemble matrix and right-hand-side
   SparseMatrix<number> system_matrix_host(sparsity_pattern);

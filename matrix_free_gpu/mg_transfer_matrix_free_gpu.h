@@ -19,7 +19,6 @@
 #include <deal.II/base/config.h>
 
 // #include <deal.II/lac/gpu_vector.h>
-#include "gpu_vec.h"
 #include <deal.II/multigrid/mg_base.h>
 #include <deal.II/multigrid/mg_constrained_dofs.h>
 #include <deal.II/base/mg_level_object.h>
@@ -28,40 +27,12 @@
 
 #include <deal.II/dofs/dof_handler.h>
 
+#include "gpu_vec.h"
+#include "gpu_list.h"
 
 DEAL_II_NAMESPACE_OPEN
 
 namespace internal {
-
-  template <typename T>
-  class GpuList {
-  private:
-    unsigned int n;
-    T *values;
-  public:
-    GpuList();
-
-    GpuList(const GpuList<T> &other);
-
-    GpuList(const std::vector<T> &host_arr);
-
-    ~GpuList();
-
-    void resize(unsigned int newsize);
-
-    GpuList<T> & operator=(const GpuList<T> &other);
-
-    GpuList<T> & operator=(const std::vector<T> &host_arr);
-
-    void clear();
-
-    unsigned int size() const;
-
-    const T* getDataRO() const;
-
-    std::size_t memory_consumption() const;
-
-  };
 
   struct IndexMapping {
     GpuList<int> global_indices;
@@ -248,13 +219,13 @@ private:
    */
 
   // FIXME: change to GpuVector or similar class
-  std::vector<internal::GpuList<unsigned int> > level_dof_indices;
+  std::vector<GpuList<unsigned int> > level_dof_indices;
 
   /**
    * Stores the connectivity from parent to child cell numbers for each level.
    */
   // std::vector<std::vector<std::pair<unsigned int,unsigned int> > > parent_child_connect;
-  std::vector<internal::GpuList<unsigned int> > child_offset_in_parent;
+  std::vector<GpuList<unsigned int> > child_offset_in_parent;
 
   /**
    * Stores the number of cells owned on a given process (sets the bounds for
@@ -301,7 +272,7 @@ private:
    * the indices on the cell (inner index).
    */
   // std::vector<std::vector<std::vector<unsigned short> > > dirichlet_indices;
-  std::vector<internal::GpuList<unsigned int> > dirichlet_indices;
+  std::vector<GpuList<unsigned int> > dirichlet_indices;
 
   /**
    * Internal function for setting up data structures for solution transfer

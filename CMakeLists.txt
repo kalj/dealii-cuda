@@ -67,10 +67,10 @@ TARGET_LINK_LIBRARIES(test_laplace_op ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(poisson_spm poisson_spm.cu poisson_common.cc matrix_free_gpu/cuda_sparse_matrix.cu matrix_free_gpu/gpu_vec.cu)
 TARGET_LINK_LIBRARIES(poisson_spm ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
 
-CUDA_ADD_EXECUTABLE(poisson poisson.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc)
+CUDA_ADD_EXECUTABLE(poisson poisson.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc matrix_free_gpu/gpu_list.cu)
 TARGET_LINK_LIBRARIES(poisson ${LIBRARIES})
 
-CUDA_ADD_EXECUTABLE(poisson_mg poisson_mg.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/mg_transfer_matrix_free_gpu.cu matrix_free_gpu/coloring.cc )
+CUDA_ADD_EXECUTABLE(poisson_mg poisson_mg.cu poisson_common.cc matrix_free_gpu/gpu_list.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/mg_transfer_matrix_free_gpu.cu matrix_free_gpu/coloring.cc )
 TARGET_LINK_LIBRARIES(poisson_mg ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(poisson_cpu poisson_cpu.cc poisson_common.cc laplace_operator_cpu.cc)
