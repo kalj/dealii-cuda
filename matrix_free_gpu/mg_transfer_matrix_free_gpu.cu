@@ -40,116 +40,8 @@
 DEAL_II_NAMESPACE_OPEN
 
 
-namespace internal {
-
-  template <typename T>
-  GpuList<T>::GpuList()
-  {
-    n = 0;
-    values = NULL;
-  }
-
-  template <typename T>
-  GpuList<T>::GpuList(const GpuList<T> &other)
-  {
-    n = other.size();
-    cudaMalloc(&values,n*sizeof(T));
-    cudaAssertNoError();
-    cudaMemcpy(values,other.values,n*sizeof(T),
-               cudaMemcpyDeviceToDevice);
-    cudaAssertNoError();
-  }
-
-  template <typename T>
-  GpuList<T>::GpuList(const std::vector<T> &host_arr)
-  {
-    n = host_arr.size();
-    cudaMalloc(&values,n*sizeof(T));
-    cudaAssertNoError();
-    cudaMemcpy(values,&host_arr[0],n*sizeof(T),
-               cudaMemcpyHostToDevice);
-    cudaAssertNoError();
-  }
-
-  template <typename T>
-  GpuList<T>::~GpuList()
-  {
-    if(values != NULL) {
-      cudaFree(values);
-      cudaAssertNoError();
-    }
-  }
-
-  template <typename T>
-  void GpuList<T>::resize(unsigned int newsize)
-  {
-    if(n != newsize)
-    {
-      if(values != NULL) {
-        cudaFree(values);
-        cudaAssertNoError();
-      }
-
-      n = newsize;
-      cudaMalloc(&values,n*sizeof(T));
-      cudaAssertNoError();
-    }
-  }
-
-  template <typename T>
-  GpuList<T>& GpuList<T>::operator=(const GpuList<T> &other)
-  {
-    resize(other.size());
-
-    cudaMemcpy(values,other.values,n*sizeof(T),
-               cudaMemcpyDeviceToDevice);
-    cudaAssertNoError();
-
-    return *this;
-  }
-
-    template <typename T>
-    GpuList<T>& GpuList<T>::operator=(const std::vector<T> &host_arr)
-    {
-
-      resize(host_arr.size());
-
-      cudaMemcpy(values,host_arr.data(),n*sizeof(T),
-                 cudaMemcpyHostToDevice);
-      cudaAssertNoError();
-
-      return *this;
-    }
-
-      template <typename T>
-      void GpuList<T>::clear()
-      {
-        n = 0;
-        if(values != NULL) {
-          cudaFree(values);
-          cudaAssertNoError();
-          values = NULL;
-        }
-      }
-
-  template <typename T>
-  unsigned int GpuList<T>::size() const
-  {
-    return n;
-  }
-
-  template <typename T>
-  const T* GpuList<T>::getDataRO() const
-  {
-    return values;
-  }
-
-  template <typename T>
-  std::size_t GpuList<T>::memory_consumption() const
-  {
-    return sizeof(T)*n;
-  }
-
+namespace internal
+{
 
   std::size_t IndexMapping::memory_consumption() const
   {
@@ -801,25 +693,6 @@ void MGTransferMatrixFreeGpu<dim,Number>::set_constrained_dofs(GpuVector<Number>
   cudaAssertNoError();
 }
 
-template <typename Number>
-__global__ void copy_with_indices_kernel(Number *dst, const Number *src, const int *dst_indices, const int *src_indices, int n)
-{
-  const int i = threadIdx.x + blockIdx.x*blockDim.x;
-  if(i<n) {
-    dst[dst_indices[i]] = src[src_indices[i]];
-  }
-}
-
-template <typename Number>
-void copy_with_indices(GpuVector<Number> &dst, const GpuVector<Number> &src,
-                       const internal::GpuList<int> &dst_indices, const internal::GpuList<int> &src_indices)
-{
-  const int n = dst_indices.size();
-  const int blocksize = 256;
-  const dim3 block_dim = dim3(blocksize);
-  const dim3 grid_dim = dim3(1 + (n-1)/blocksize);
-  copy_with_indices_kernel<<<grid_dim, block_dim >>>(dst.getData(),src.getDataRO(),dst_indices.getDataRO(),src_indices.getDataRO(),n);
-}
 
 template <int dim, typename Number>
 template <int spacedim>
