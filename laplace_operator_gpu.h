@@ -337,8 +337,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (VectorType       &dst,
 
 
   // apply laplace operator
-  LocalOperator<dim,fe_degree,Number> loc_op;
-  loc_op.coefficient = coefficient.getDataRO();
+  LocalOperator<dim,fe_degree,Number> loc_op{coefficient.getDataRO()};
 
   data.cell_loop (dst,src,loc_op);
 
