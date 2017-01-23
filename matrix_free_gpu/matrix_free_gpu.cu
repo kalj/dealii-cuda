@@ -246,7 +246,6 @@ void ReinitHelper<dim,Number>::setup_cell_arrays(const unsigned int c)
     inv_jac_host.resize(n_cells*rowlength*dim*dim);
 
 #if MATRIX_FREE_HANGING_NODES
-  if(hanging_node_constraints_possible)
     constraint_mask_host.resize(n_cells);
 #endif
 }
@@ -405,9 +404,7 @@ void ReinitHelper<dim,Number>::alloc_and_copy_arrays(const unsigned int c)
   }
 
 #ifdef MATRIX_FREE_HANGING_NODES
-  if(hanging_node_constraints_possible) {
-    alloc_and_copy(&data->constraint_mask[c],constraint_mask_host,n_cells);
-  }
+  alloc_and_copy(&data->constraint_mask[c],constraint_mask_host,n_cells);
 #endif
 }
 
