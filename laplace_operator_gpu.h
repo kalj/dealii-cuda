@@ -15,6 +15,7 @@
 
 #include "matrix_free_gpu/defs.h"
 #include "matrix_free_gpu/gpu_vec.h"
+#include "matrix_free_gpu/gpu_list.h"
 #include "matrix_free_gpu/gpu_array.cuh"
 #include "matrix_free_gpu/matrix_free_gpu.h"
 #include "matrix_free_gpu/fee_gpu.cuh"
@@ -81,8 +82,9 @@ private:
   std::shared_ptr<DiagonalMatrix<VectorType>>  inverse_diagonal_matrix;
   bool                                                diagonal_is_available;
 
-  mutable VectorType           temp_dst;
-  mutable VectorType           temp_src;
+  GpuList<unsigned int>        constrained_indices;
+  mutable VectorType           constrained_values_src;
+  mutable VectorType           constrained_values_dst;
 };
 
 
@@ -126,11 +128,28 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>  &dof_ha
   additional_data.level_mg_handler = level;
   additional_data.mapping_update_flags = (update_gradients | update_JxW_values |
                                           update_quadrature_points);
+
+  // enable hanging nodes
   data.reinit (dof_handler, constraints, QGauss<1>(fe_degree+1),
                additional_data);
 
-  temp_dst.reinit(data.n_constrained_dofs);
-  temp_src.reinit(data.n_constrained_dofs);
+
+  const int n_constrained_dofs = constraints.n_constraints();
+
+  std::vector<unsigned int> constrained_dofs_host(n_constrained_dofs);
+
+  unsigned int iconstr = 0;
+  for(unsigned int i=0; i<dof_handler.n_dofs(); i++) {
+    if(constraints.is_constrained(i)) {
+      constrained_dofs_host[iconstr] = i;
+      iconstr++;
+    }
+  }
+
+  constrained_indices = constrained_dofs_host;
+
+  constrained_values_dst.reinit(constrained_indices.size());
+  constrained_values_src.reinit(constrained_indices.size());
 
   evaluate_coefficient();
 }
@@ -239,10 +258,13 @@ void
 LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (VectorType       &dst,
                                                      const VectorType &src) const
 {
-  // save possibly non-zero values of Dirichlet values on input and output, and
-  // set input values to zero to avoid polluting output.
-  data.save_constrained_values(dst, const_cast<VectorTyp&>(src),
-                               temp_src, temp_dst);
+  // save possibly non-zero values of Dirichlet and hanging-node values on input
+  // and output, and set input values to zero to avoid polluting output.
+  constrained_values_src = src[constrained_indices];
+  const_cast<VectorType&>(src)[constrained_indices] = 0.0;
+  constrained_values_dst = const_cast<const VectorType &>(dst)[constrained_indices];
+  // constrained_values_dst = dst[constrained_indices];
+
 
   // apply laplace operator
   LocalOperator<dim,fe_degree,Number> loc_op;
@@ -252,8 +274,9 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (VectorType       &dst,
 
   // overwrite Dirichlet values in output with correct values, and reset input
   // to possibly non-zero values.
-  data.load_constrained_values(dst, const_cast<VectorType&>(src),
-                               temp_src, temp_dst);
+  dst[constrained_indices] = constrained_values_dst + constrained_values_src;
+  const_cast<VectorType&>(src)[constrained_indices] = constrained_values_src;
+
 }
 
 // set diagonal (and set values correponding to constrained DoFs to 1)
@@ -269,7 +292,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::set_diagonal(const Vector<Number> &dia
   diag = 1.0;
   diag /= VectorType(diagonal);
 
-  data.set_constrained_values(diag,1.0);
+  diag[constrained_indices] = 1.0;
 
   diagonal_is_available = true;
 }
