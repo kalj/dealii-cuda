@@ -21,6 +21,8 @@
 #include "matrix_free_gpu/matrix_free_gpu.h"
 #include "matrix_free_gpu/fee_gpu.cuh"
 #include "matrix_free_gpu/cuda_utils.cuh"
+#include "matrix_free_gpu/constraint_handler_gpu.h"
+
 #include "poisson_common.h"
 
 using namespace dealii;
@@ -91,10 +93,7 @@ private:
   std::shared_ptr<DiagonalMatrix<VectorType>>  inverse_diagonal_matrix;
   bool                                                diagonal_is_available;
 
-  GpuList<unsigned int>        edge_indices;
-  GpuList<unsigned int>        constrained_indices;
-  mutable VectorType           constrained_values_src;
-  mutable VectorType           constrained_values_dst;
+  mutable ConstraintHandlerGpu<Number> constraint_handler;
 };
 
 
@@ -129,7 +128,6 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>   &dof_h
   // this constructor is used for the non-Multigrid case, i.e. when this matrix
   // is the global system matrix
 
-
   typename MatrixFreeGpu<dim,Number>::AdditionalData additional_data;
 
 #ifdef MATRIX_FREE_COLOR
@@ -147,27 +145,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>   &dof_h
   data.reinit (dof_handler, constraints, QGauss<1>(fe_degree+1),
                additional_data);
 
-
-  const int n_constrained_dofs = constraints.n_constraints();
-
-  std::vector<unsigned int> constrained_dofs_host(n_constrained_dofs);
-
-  unsigned int iconstr = 0;
-  for(unsigned int i=0; i<dof_handler.n_dofs(); i++) {
-    if(constraints.is_constrained(i)) {
-      constrained_dofs_host[iconstr] = i;
-      iconstr++;
-    }
-  }
-
-  constrained_indices = constrained_dofs_host;
-
-  constrained_values_dst.reinit(constrained_indices.size());
-  constrained_values_src.reinit(constrained_indices.size());
-
-  // no edge constraints -- these are now hanging node constraints and are
-  // handled by MatrixFreeGpu
-  edge_indices.clear();
+  constraint_handler.reinit(constraints,dof_handler.n_dofs());
 
   evaluate_coefficient();
 
@@ -201,25 +179,9 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::reinit (const DoFHandler<dim>    &dof_
   data.reinit (dof_handler, ConstraintMatrix(), QGauss<1>(fe_degree+1),
                additional_data);
 
-
   // constraints are instead handled here
-
-  std::vector<types::global_dof_index> indices;
-  IndexSet index_set;
-
-  // first set up list of DoFs on refinement edges
-  index_set = mg_constrained_dofs.get_refinement_edge_indices(level);
-  index_set.fill_index_vector(indices);
-  edge_indices = indices;
-
-  // then add also boundary DoFs to get all constrained DoFs
-  index_set.add_indices(mg_constrained_dofs.get_boundary_indices(level));
-  index_set.fill_index_vector(indices);
-  constrained_indices = indices;
-
-
-  constrained_values_dst.reinit(constrained_indices.size());
-  constrained_values_src.reinit(constrained_indices.size());
+  constraint_handler.reinit(mg_constrained_dofs,
+                            level);
 
   evaluate_coefficient();
 }
@@ -330,11 +292,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (VectorType       &dst,
 {
   // save possibly non-zero values of Dirichlet and hanging-node values on input
   // and output, and set input values to zero to avoid polluting output.
-  constrained_values_src = src[constrained_indices];
-  const_cast<VectorType&>(src)[constrained_indices] = 0.0;
-  constrained_values_dst = const_cast<const VectorType &>(dst)[constrained_indices];
-  // constrained_values_dst = dst[constrained_indices];
-
+  constraint_handler.save_constrained_values(dst, const_cast<GpuVector<Number>&>(src));
 
   // apply laplace operator
   LocalOperator<dim,fe_degree,Number> loc_op{coefficient.getDataRO()};
@@ -343,11 +301,8 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::vmult_add (VectorType       &dst,
 
   // overwrite Dirichlet values in output with correct values, and reset input
   // to possibly non-zero values.
-  dst[constrained_indices] = constrained_values_dst + constrained_values_src;
-  const_cast<VectorType&>(src)[constrained_indices] = constrained_values_src;
-
+  constraint_handler.load_and_add_constrained_values(dst, const_cast<GpuVector<Number>&>(src));
 }
-
 
 
 template <int dim, int fe_degree, typename Number>
@@ -356,32 +311,24 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::
 vmult_interface_down(VectorType       &dst,
                      const VectorType &src) const
 {
-  // printf("calling vmult_if_down... (level=%d)\n",level);
-
   // set zero Dirichlet values on the refinement edges of the input vector (and
-  // remember the src values because we need to reset them at the end)
-
+  // remember the src values because we need to reset them at the end).
   // since also the real boundary DoFs should be zeroed out, we do everything at once
-  constrained_values_src = src[constrained_indices];
-  const_cast<VectorType&>(src)[constrained_indices] = 0.0;
+  constraint_handler.save_constrained_values(const_cast<VectorType&>(src));
 
   // use temporary destination, is all zero here
   VectorType tmp_dst(dst.size());
 
   // apply laplace operator
-  LocalOperator<dim,fe_degree,Number> loc_op;
-  loc_op.coefficient = coefficient.getDataRO();
+  LocalOperator<dim,fe_degree,Number> loc_op{coefficient.getDataRO()};
   data.cell_loop (tmp_dst,src,loc_op);
-
 
   // now zero out everything except the values at the refinement edges,
   dst = 0.0;
-  dst[edge_indices] = const_cast<const VectorType &>(tmp_dst)[edge_indices];
-  // dst[edge_indices] = tmp_dst[edge_indices];
+  constraint_handler.copy_edge_values(dst,tmp_dst);
 
   // and restore the src values
-  const_cast<VectorType&>(src)[constrained_indices] = constrained_values_src;
-
+  constraint_handler.load_constrained_values(const_cast<VectorType&>(src));
 }
 
 template <int dim, int fe_degree, typename Number>
@@ -395,18 +342,15 @@ vmult_interface_up(VectorType       &dst,
 
   // only use values at refinement edges
   VectorType src_cpy (src.size());
-  src_cpy[edge_indices] = src[edge_indices];
-
+  constraint_handler.copy_edge_values(src_cpy,src);
 
   // apply laplace operator
-  LocalOperator<dim,fe_degree,Number> loc_op;
-  loc_op.coefficient = coefficient.getDataRO();
-
+  LocalOperator<dim,fe_degree,Number> loc_op{coefficient.getDataRO()};
   data.cell_loop (dst,src_cpy,loc_op);
 
-  // zero out edge values
+  // zero out edge values.
   // since boundary values should also be removed, do both at once.
-  dst[constrained_indices] = 0.0;
+  constraint_handler.set_constrained_values(dst,0.0);
 }
 
 
@@ -423,7 +367,7 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::set_diagonal(const Vector<Number> &dia
   diag = 1.0;
   diag /= VectorType(diagonal);
 
-  diag[constrained_indices] = 1.0;
+  constraint_handler.set_constrained_values(diag,1.0);
 
   diagonal_is_available = true;
 }
