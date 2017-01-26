@@ -59,7 +59,7 @@ TARGET_LINK_LIBRARIES(test_hanging_node_interpolation ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(test_dot test_dot.cpp matrix_free_gpu/gpu_vec.cu  matrix_free_gpu/gpu_list.cu matrix_free_gpu/timing.cu)
 TARGET_LINK_LIBRARIES(test_dot ${LIBRARIES})
 
-CUDA_ADD_EXECUTABLE(test_laplace_op poisson_common.cc test_laplace_op.cu laplace_operator_cpu.cc matrix_free_gpu/gpu_vec.cu  matrix_free_gpu/gpu_list.cu matrix_free_gpu/coloring.cc )
+CUDA_ADD_EXECUTABLE(test_laplace_op poisson_common.cc test_laplace_op.cu laplace_operator_cpu.cc matrix_free_gpu/gpu_vec.cu  matrix_free_gpu/gpu_list.cu matrix_free_gpu/coloring.cc  matrix_free_gpu/constraint_handler_gpu.cu)
 TARGET_LINK_LIBRARIES(test_laplace_op ${LIBRARIES})
 
 # solvers
@@ -67,10 +67,10 @@ TARGET_LINK_LIBRARIES(test_laplace_op ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(poisson_spm poisson_spm.cu poisson_common.cc matrix_free_gpu/cuda_sparse_matrix.cu matrix_free_gpu/gpu_vec.cu  matrix_free_gpu/gpu_list.cu)
 TARGET_LINK_LIBRARIES(poisson_spm ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
 
-CUDA_ADD_EXECUTABLE(poisson poisson.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc matrix_free_gpu/gpu_list.cu)
+CUDA_ADD_EXECUTABLE(poisson poisson.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc matrix_free_gpu/gpu_list.cu  matrix_free_gpu/constraint_handler_gpu.cu)
 TARGET_LINK_LIBRARIES(poisson ${LIBRARIES})
 
-CUDA_ADD_EXECUTABLE(poisson_mg poisson_mg.cu poisson_common.cc matrix_free_gpu/gpu_list.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/mg_transfer_matrix_free_gpu.cu matrix_free_gpu/coloring.cc )
+CUDA_ADD_EXECUTABLE(poisson_mg poisson_mg.cu poisson_common.cc matrix_free_gpu/gpu_list.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/mg_transfer_matrix_free_gpu.cu matrix_free_gpu/coloring.cc  matrix_free_gpu/constraint_handler_gpu.cu)
 TARGET_LINK_LIBRARIES(poisson_mg ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(poisson_cpu poisson_cpu.cc poisson_common.cc laplace_operator_cpu.cc)
@@ -81,7 +81,7 @@ TARGET_LINK_LIBRARIES(poisson_mg_cpu ${LIBRARIES})
 
 # benchmarks
 
-CUDA_ADD_EXECUTABLE(bmop bmop.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc matrix_free_gpu/gpu_list.cu)
+CUDA_ADD_EXECUTABLE(bmop bmop.cu poisson_common.cc matrix_free_gpu/gpu_vec.cu matrix_free_gpu/coloring.cc matrix_free_gpu/gpu_list.cu matrix_free_gpu/constraint_handler_gpu.cu)
 TARGET_LINK_LIBRARIES(bmop ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(bmop_spm bmop_spm.cu poisson_common.cc matrix_free_gpu/cuda_sparse_matrix.cu matrix_free_gpu/gpu_vec.cu matrix_free_gpu/gpu_list.cu)

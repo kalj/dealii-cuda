@@ -31,8 +31,6 @@
 //              parallel. the local operation to perform is passed as a
 //              read-only struct with a function 'apply' and, possibly some
 //              data, such as a cell-local coefficient values.
-// - set/copy_constrained_values: functions for assigning or copying values at
-//              the constrained DoFs (i.e. boundary values or hanging nodes).
 //=============================================================================
 
 
@@ -57,7 +55,6 @@ public:
   unsigned int fe_degree;
   unsigned int n_cells_tot;
   unsigned int n_dofs;
-  unsigned int n_constrained_dofs;
   unsigned int dofs_per_cell;
   unsigned int qpts_per_cell;
 
@@ -117,7 +114,6 @@ private:
   std::vector<Number*>          JxW;
 
   // constraints
-  unsigned int *constrained_dofs;
   std::vector<unsigned int*>    constraint_mask;
 
   // GPU kernel parameters
@@ -126,8 +122,6 @@ private:
 
   // related to parallelization
   unsigned int cells_per_block;
-  dim3 constr_grid_dim;
-  dim3 constr_block_dim;
 
   // for alignment
   unsigned int rowlength;
@@ -184,18 +178,6 @@ public:
   void cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,
                  const LocOp &loc_op) const;
 
-  // set/copy values at constrained DoFs
-  // void set_constrained_values(GpuVector <Number> &dst, Number val) const;
-  // void copy_constrained_values(GpuVector <Number> &dst, const GpuVector<Number> &src) const;
-  // void save_constrained_values(const GpuVector <Number> &output,
-  //                              GpuVector<Number> &input,
-  //                              GpuVector <Number> &tmp_output,
-  //                              GpuVector<Number> &tmp_input) const;
-  // void load_constrained_values(GpuVector <Number> &output,
-  //                              GpuVector<Number> &input,
-  //                              const GpuVector <Number> &tmp_output,
-  //                              const GpuVector<Number> &tmp_input) const;
-
   void free();
 
   template <typename Op>
@@ -214,8 +196,7 @@ public:
 
 template <int dim, typename Number>
 MatrixFreeGpu<dim,Number>::MatrixFreeGpu()
-  : constrained_dofs(NULL),
-    use_coloring(false),
+  : use_coloring(false),
     rowlength(0),
     level_mg_handler(numbers::invalid_unsigned_int)
 {}
@@ -376,8 +357,7 @@ template <int dim, typename Number>
 std::size_t MatrixFreeGpu<dim,Number>::memory_consumption() const
 {
   std::size_t bytes = n_cells.size()*sizeof(unsigned int)*(2) // n_cells and rowstarts
-    + 2*num_colors*sizeof(dim3)                               // kernel launch parameters
-    + n_constrained_dofs*sizeof(unsigned int);                // constrained_dofs
+    + 2*num_colors*sizeof(dim3);                               // kernel launch parameters
 
   for(int c = 0; c < num_colors; ++c) {
     bytes +=
