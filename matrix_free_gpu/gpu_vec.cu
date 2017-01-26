@@ -571,8 +571,8 @@ Number GpuVector<Number>::add_and_dot (const Number  a,
 //=============================================================================
 // non-class functions
 //=============================================================================
-template <typename Number>
-__global__ void copy_with_indices_kernel(Number *dst, const Number *src, const int *dst_indices, const int *src_indices, int n)
+template <typename Number, typename IndexT>
+__global__ void copy_with_indices_kernel(Number *dst, const Number *src, const IndexT *dst_indices, const IndexT *src_indices, int n)
 {
   const int i = threadIdx.x + blockIdx.x*blockDim.x;
   if(i<n) {
@@ -581,9 +581,9 @@ __global__ void copy_with_indices_kernel(Number *dst, const Number *src, const i
 }
 
 
-template <typename Number>
+template <typename Number, typename IndexT>
 void copy_with_indices(GpuVector<Number> &dst, const GpuVector<Number> &src,
-                       const GpuList<int> &dst_indices, const GpuList<int> &src_indices)
+                       const GpuList<IndexT> &dst_indices, const GpuList<IndexT> &src_indices)
 {
   const int n = dst_indices.size();
   const int blocksize = 256;
@@ -986,6 +986,10 @@ template VecPlusVec<float> operator+(const GpuVector<float>& l, const GpuVector<
 
 template void copy_with_indices<double> (GpuVector<double> &, const GpuVector<double> &,
                                          const GpuList<int> &, const GpuList<int> &);
+template void copy_with_indices<double> (GpuVector<double> &, const GpuVector<double> &,
+                                         const GpuList<unsigned int> &, const GpuList<unsigned int> &);
 
 template void copy_with_indices<float> (GpuVector<float> &, const GpuVector<float> &,
                                          const GpuList<int> &, const GpuList<int> &);
+template void copy_with_indices<float> (GpuVector<float> &, const GpuVector<float> &,
+                                         const GpuList<unsigned int> &, const GpuList<unsigned int> &);

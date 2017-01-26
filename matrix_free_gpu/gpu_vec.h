@@ -253,9 +253,9 @@ VecSlicePlusVec<Number> operator+(const ConstVecSlice<Number> l, const GpuVector
 template <typename Number>
 VecPlusVec<Number> operator+(const GpuVector<Number>& l, const GpuVector<Number>& r);
 
-template <typename Number>
+template <typename Number, typename IndexT>
 void copy_with_indices(GpuVector<Number> &dst, const GpuVector<Number> &src,
-                       const GpuList<int> &dst_indices, const GpuList<int> &src_indices);
+                       const GpuList<IndexT> &dst_indices, const GpuList<IndexT> &src_indices);
 
 
 
