@@ -39,6 +39,8 @@ public:
 
   void copy_edge_values(GpuVector<Number> &dst, const GpuVector<Number> &src) const;
 
+  std::size_t memory_consumption () const;
+
 private:
   void reinit_kernel_parameters();
 
@@ -52,8 +54,8 @@ private:
   GpuVector<Number>                   constrained_values_src;
   GpuVector<Number>                   constrained_values_dst;
 
-  dim3 constr_grid_dim;
-  dim3 constr_block_dim;
+  dim3 grid_dim;
+  dim3 block_dim;
 };
 
 DEAL_II_NAMESPACE_CLOSE

@@ -388,6 +388,7 @@ std::size_t
 LaplaceOperatorGpu<dim,fe_degree,Number>::memory_consumption () const
 {
   std::size_t bytes = (data.memory_consumption () +
+                       MemoryConsumption::memory_consumption(constraint_handler) +
                        MemoryConsumption::memory_consumption(inverse_diagonal_matrix) +
                        MemoryConsumption::memory_consumption(diagonal_is_available) +
                        coefficient.memory_consumption());

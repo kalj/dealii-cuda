@@ -57,12 +57,12 @@ void ConstraintHandlerGpu<Number>::reinit_kernel_parameters()
 {
 
   const unsigned int n_constrained_dofs = constrained_indices.size();
-  const unsigned int constr_num_blocks = ceil(n_constrained_dofs / float(MATRIX_FREE_BKSIZE_CONSTR));
-  const unsigned int constr_x_num_blocks = round(sqrt(constr_num_blocks)); // get closest to even square.
-  const unsigned int constr_y_num_blocks = ceil(double(constr_num_blocks)/constr_x_num_blocks);
+  const unsigned int num_blocks = ceil(n_constrained_dofs / float(MATRIX_FREE_BKSIZE_CONSTR));
+  const unsigned int x_num_blocks = round(sqrt(num_blocks)); // get closest to even square.
+  const unsigned int y_num_blocks = ceil(double(num_blocks)/x_num_blocks);
 
-  constr_grid_dim = dim3(constr_x_num_blocks,constr_y_num_blocks);
-  constr_block_dim = dim3(MATRIX_FREE_BKSIZE_CONSTR);
+  grid_dim = dim3(x_num_blocks,y_num_blocks);
+  block_dim = dim3(MATRIX_FREE_BKSIZE_CONSTR);
 }
 
 template <typename Number>
@@ -128,7 +128,7 @@ void ConstraintHandlerGpu<Number>::set_constrained_values(GpuVector <Number> &ds
                                                           Number val) const
 {
   if(n_constrained_dofs != 0) {
-    kernels::set_constrained_dofs_kernel<Number> <<<constr_grid_dim,constr_block_dim>>>(dst.getData(),
+    kernels::set_constrained_dofs_kernel<Number> <<<grid_dim,block_dim>>>(dst.getData(),
                                                                                         val,
                                                                                         constrained_indices.getDataRO(),
                                                                                         n_constrained_dofs);
@@ -140,7 +140,7 @@ template <typename Number>
 void ConstraintHandlerGpu<Number>::save_constrained_values(GpuVector<Number>        &src)
 {
   if(n_constrained_dofs != 0) {
-    kernels::save_constrained_dofs_kernel<Number> <<<constr_grid_dim,constr_block_dim>>>(src.getData(),
+    kernels::save_constrained_dofs_kernel<Number> <<<grid_dim,block_dim>>>(src.getData(),
                                                                                          constrained_values_src.getData(),
                                                                                          constrained_indices.getDataRO(),
                                                                                          n_constrained_dofs);
@@ -154,7 +154,7 @@ void ConstraintHandlerGpu<Number>::save_constrained_values(const GpuVector <Numb
                                                            GpuVector<Number>        &src)
 {
   if(n_constrained_dofs != 0) {
-    kernels::save_constrained_dofs_kernel<Number> <<<constr_grid_dim,constr_block_dim>>>(dst.getDataRO(),
+    kernels::save_constrained_dofs_kernel<Number> <<<grid_dim,block_dim>>>(dst.getDataRO(),
                                                                                          src.getData(),
                                                                                          constrained_values_dst.getData(),
                                                                                          constrained_values_src.getData(),
@@ -168,7 +168,7 @@ template <typename Number>
 void ConstraintHandlerGpu<Number>::load_constrained_values(GpuVector <Number>          &src) const
 {
   if(n_constrained_dofs != 0) {
-    kernels::load_constrained_dofs_kernel<Number> <<<constr_grid_dim,constr_block_dim>>>(src.getData(),
+    kernels::load_constrained_dofs_kernel<Number> <<<grid_dim,block_dim>>>(src.getData(),
                                                                                          constrained_values_src.getDataRO(),
                                                                                          constrained_indices.getDataRO(),
                                                                                          n_constrained_dofs);
@@ -182,7 +182,7 @@ void ConstraintHandlerGpu<Number>::load_and_add_constrained_values(GpuVector <Nu
                                                                    GpuVector<Number>           &src) const
 {
   if(n_constrained_dofs != 0) {
-    kernels::load_and_add_constrained_dofs_kernel<Number> <<<constr_grid_dim,constr_block_dim>>>(dst.getData(),
+    kernels::load_and_add_constrained_dofs_kernel<Number> <<<grid_dim,block_dim>>>(dst.getData(),
                                                                                                  src.getData(),
                                                                                                  constrained_values_dst.getDataRO(),
                                                                                                  constrained_values_src.getDataRO(),
@@ -198,6 +198,22 @@ void ConstraintHandlerGpu<Number>::copy_edge_values(GpuVector <Number>          
 {
   copy_with_indices(dst,src,edge_indices,edge_indices);
 }
+
+
+template <typename Number>
+std::size_t ConstraintHandlerGpu<Number>::memory_consumption () const
+{
+  std::size_t memory = 0;
+  memory += MemoryConsumption::memory_consumption(n_constrained_dofs);
+  memory += MemoryConsumption::memory_consumption(constrained_indices);
+  memory += MemoryConsumption::memory_consumption(edge_indices);
+  memory += MemoryConsumption::memory_consumption(constrained_values_src);
+  memory += MemoryConsumption::memory_consumption(constrained_values_dst);
+  memory += sizeof(grid_dim);
+  memory += sizeof(block_dim);
+  return memory;
+}
+
 
 namespace kernels
 {
