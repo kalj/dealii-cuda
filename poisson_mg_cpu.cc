@@ -402,7 +402,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
     for (unsigned int i=0; i<dofs_per_cell; ++i)
     {
-      double diag_val = 0;
+      number diag_val = 0;
       number rhs_val = 0;
 
       for (unsigned int q=0; q<n_q_points; ++q) {
@@ -531,6 +531,10 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 {
   Timer time;
 
+  MGLevelObject<MyMGInterfaceOperator<LevelMatrixType> > mg_interface_matrices;
+  mg_interface_matrices.resize(0, dof_handler.get_triangulation().n_global_levels()-1);
+  for (unsigned int level=0; level<dof_handler.get_triangulation().n_global_levels(); ++level)
+    mg_interface_matrices[level].initialize(mg_matrices[level]);
 
   MGTransferMF<LevelMatrixType > mg_transfer(mg_matrices, mg_constrained_dofs);
   mg_transfer.build_matrices(dof_handler);
@@ -573,15 +577,19 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 
   mg::Matrix<VectorType > mg_matrix(mg_matrices);
 
+  mg::Matrix<VectorType > mg_interface(mg_interface_matrices);
+
   Multigrid<VectorType > mg(mg_matrix,
                             mg_coarse,
                             mg_transfer,
                             mg_smoother,
                             mg_smoother);
+
+  mg.set_edge_matrices(mg_interface, mg_interface);
+
   PreconditionMG<dim, VectorType,
                  MGTransferMF<LevelMatrixType> >
                  preconditioner(dof_handler, mg, mg_transfer);
-
 
   {
     const unsigned int n = system_matrix.m();
@@ -610,6 +618,9 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 
 
     DataOut<dim> data_out;
+    constraints.distribute(check1);
+    constraints.distribute(check2);
+    constraints.distribute(check3);
     data_out.add_data_vector (dof_handler, check1 , "initial_field");
     data_out.add_data_vector (dof_handler, check2, "mg_cycle");
     data_out.add_data_vector (dof_handler, check3, "chebyshev");
@@ -771,7 +782,6 @@ void LaplaceProblem<dim,fe_degree>::run ()
   grid_case_t grid_refinement = UNIFORM;
 
   for (unsigned int cycle=0; cycle<7-dim; ++cycle)
-
   {
     std::cout << "Cycle " << cycle << std::endl;
 

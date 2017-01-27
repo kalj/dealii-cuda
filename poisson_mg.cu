@@ -386,8 +386,8 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
         diag_val += ((fe_values.shape_grad(i,q) *
                       fe_values.shape_grad(i,q)) *
                      coefficient_values[q] * fe_values.JxW(q));
-
       }
+
       local_diagonal(i) = diag_val;
       local_rhs(i) = rhs_val;
     }
@@ -501,15 +501,12 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 {
   Timer time;
 
-  typedef PreconditionChebyshev<LevelMatrixType,VectorType > SMOOTHER;
 
-  MGConstrainedDoFs mg_constrained_dofs;
-  mg_constrained_dofs.initialize(dof_handler);
-  std::set<types::boundary_id> bdry;
-  bdry.insert(0);
-  mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,bdry);
-
-
+  MGLevelObject<MyMGInterfaceOperator<LevelMatrixType> > mg_interface_matrices;
+  // MGLevelObject<MatrixFreeOperators::MGInterfaceOperator<LevelMatrixType> > mg_interface_matrices;
+  mg_interface_matrices.resize(0, dof_handler.get_triangulation().n_global_levels()-1);
+  for (unsigned int level=0; level<dof_handler.get_triangulation().n_global_levels(); ++level)
+    mg_interface_matrices[level].initialize(mg_matrices[level]);
 
   MGTransferMatrixFreeGpu<dim, number > mg_transfer(mg_constrained_dofs);
   mg_transfer.build(dof_handler);
@@ -529,6 +526,7 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   time.restart();
 
 
+  typedef PreconditionChebyshev<LevelMatrixType,VectorType > SMOOTHER;
 
   MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType >
     mg_smoother;
@@ -552,11 +550,16 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 
   mg::Matrix<VectorType > mg_matrix(mg_matrices);
 
+  mg::Matrix<VectorType > mg_interface(mg_interface_matrices);
+
   Multigrid<VectorType > mg(mg_matrix,
-                                   mg_coarse,
-                                   mg_transfer,
-                                   mg_smoother,
-                                   mg_smoother);
+                            mg_coarse,
+                            mg_transfer,
+                            mg_smoother,
+                            mg_smoother);
+
+  mg.set_edge_matrices(mg_interface, mg_interface);
+
 
   PreconditionMG<dim, VectorType,
                  MGTransferMatrixFreeGpu<dim,number> >
@@ -592,10 +595,13 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 
     DataOut<dim> data_out;
     Vector<double> c1 = check1.toVector();
+    constraints.distribute(c1);
     data_out.add_data_vector (dof_handler, c1 , "initial_field");
     Vector<double> c2 = check2.toVector();
+    constraints.distribute(c2);
     data_out.add_data_vector (dof_handler, c2, "mg_cycle");
     Vector<double> c3 = check3.toVector();
+    constraints.distribute(c3);
     data_out.add_data_vector (dof_handler, c3, "chebyshev");
     // data_out.build_patches (data.mapping, data.fe_degree, DataOut<dim>::curved_inner_cells);
     data_out.build_patches (fe_degree);
