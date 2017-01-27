@@ -32,7 +32,6 @@
 #include <deal.II/multigrid/mg_transfer_internal.h>
 #include "mg_transfer_matrix_free_gpu.h"
 
-#include <deal.II/matrix_free/shape_info.h>
 #include <deal.II/matrix_free/fe_evaluation.h>
 
 #include <algorithm>
@@ -219,9 +218,15 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
 
   const unsigned int n_levels = mg_dof.get_triangulation().n_global_levels();
 
-  const unsigned int size_shape_values = elem_info.shape_info.shape_values_number.size();
-  shape_values.resize(size_shape_values);
-  shape_values.fromHost(&elem_info.shape_info.shape_values_number[0],size_shape_values);
+  // the 1D prolongation matrix
+  const unsigned int n_vecs = elem_info.prolongation_matrix_1d.size();
+  std::vector<Number> shape_values_host(n_vecs);
+  for(int i=0; i<n_vecs; i++) {
+    shape_values_host[i] = elem_info.prolongation_matrix_1d[i][0];
+  }
+
+  shape_values = shape_values_host; // copy to device memory
+
 
   level_dof_indices.resize(n_levels);
 
