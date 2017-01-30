@@ -219,13 +219,7 @@ void MGTransferMatrixFreeGpu<dim,Number>::build
   const unsigned int n_levels = mg_dof.get_triangulation().n_global_levels();
 
   // the 1D prolongation matrix
-  const unsigned int n_vecs = elem_info.prolongation_matrix_1d.size();
-  std::vector<Number> shape_values_host(n_vecs);
-  for(int i=0; i<n_vecs; i++) {
-    shape_values_host[i] = elem_info.prolongation_matrix_1d[i][0];
-  }
-
-  shape_values = shape_values_host; // copy to device memory
+  shape_values = elem_info.prolongation_matrix_1d; // copy to device memory
 
 
   level_dof_indices.resize(n_levels);
