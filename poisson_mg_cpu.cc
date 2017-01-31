@@ -279,7 +279,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
   std::vector<double> rhs_values(n_q_points);
   std::vector<Tensor<1,dim> > solution_gradients(n_q_points);
 
-  CoefficientFun<dim> coeff;
+  CoefficientFun<dim,number> coeff;
 
   typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active(),
     endc = dof_handler.end();
@@ -376,7 +376,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_multigrid ()
   const unsigned int   n_q_points    = quadrature_formula.size();
 
   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
-  const CoefficientFun<dim> coeff;
+  const CoefficientFun<dim,number> coeff;
   std::vector<number>       coefficient_values (n_q_points);
   Vector<number>            local_diagonal (dofs_per_cell);
 

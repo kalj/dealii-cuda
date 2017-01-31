@@ -185,7 +185,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
   std::vector<double> rhs_values(n_q_points);
   std::vector<Tensor<1,dim> > solution_gradients(n_q_points);
 
-  CoefficientFun<dim> coeff;
+  CoefficientFun<dim,number> coeff;
 
   typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active(),
     endc = dof_handler.end();

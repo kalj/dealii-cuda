@@ -45,6 +45,40 @@ double Solution<dim>::value (const Point<dim>   &p,
     Utilities::fixed_power<dim>(std::sqrt(2 * pi) * this->width);
 }
 
+dealii::Point<1,dealii::VectorizedArray<double>> vectorize_point(const dealii::Point<1,double> &p)
+{
+  return dealii::Point<1,dealii::VectorizedArray<double>>(make_vectorized_array(p[0]));
+}
+
+dealii::Point<2,dealii::VectorizedArray<double>> vectorize_point(const dealii::Point<2,double> &p)
+{
+  return dealii::Point<2,dealii::VectorizedArray<double>>(make_vectorized_array(p[0]),
+                                                          make_vectorized_array(p[1]));
+}
+
+dealii::Point<3,dealii::VectorizedArray<double>> vectorize_point(const dealii::Point<3,double> &p)
+{
+  return dealii::Point<3,dealii::VectorizedArray<double>>(make_vectorized_array(p[0]),
+                                                          make_vectorized_array(p[1]),
+                                                          make_vectorized_array(p[2]));
+}
+
+template <int dim>
+dealii::VectorizedArray<double> Solution<dim>::value (const Point<dim,dealii::VectorizedArray<double>>   &p,
+                                                      const unsigned int) const
+{
+  const double pi = numbers::PI;
+  dealii::VectorizedArray<double> return_value = make_vectorized_array(0.0);
+  for (unsigned int i=0; i<this->n_source_centers; ++i)
+  {
+    const Tensor<1,dim,dealii::VectorizedArray<double>> x_minus_xi = p - vectorize_point(this->source_centers[i]);
+    return_value += std::exp(-x_minus_xi.norm_square() /
+                             (this->width * this->width));
+  }
+
+  return return_value /
+    Utilities::fixed_power<dim>(std::sqrt(2 * pi) * this->width);
+}
 
 
 template <int dim>
@@ -69,6 +103,29 @@ Tensor<1,dim> Solution<dim>::gradient (const Point<dim>   &p,
 }
 
 template <int dim>
+Tensor<1,dim,dealii::VectorizedArray<double>> Solution<dim>::gradient (const Point<dim,dealii::VectorizedArray<double>>   &p,
+                                                                       const unsigned int) const
+{
+  const double pi = numbers::PI;
+  Tensor<1,dim,dealii::VectorizedArray<double>> return_value;
+
+  for (unsigned int i=0; i<this->n_source_centers; ++i)
+  {
+    const Tensor<1,dim,dealii::VectorizedArray<double>> x_minus_xi = p - vectorize_point(this->source_centers[i]);
+
+    return_value += (-2 / (this->width * this->width) *
+                     std::exp(-x_minus_xi.norm_square() /
+                              (this->width * this->width)) *
+                     x_minus_xi);
+  }
+
+  return return_value / Utilities::fixed_power<dim>(std::sqrt(2 * pi) *
+                                                    this->width);
+}
+
+
+
+template <int dim>
 double Solution<dim>::laplacian (const Point<dim>   &p,
                                  const unsigned int) const
 {
@@ -80,6 +137,28 @@ double Solution<dim>::laplacian (const Point<dim>   &p,
 
     double laplacian =
       ((-2*dim + 4*x_minus_xi.norm_square()/
+        (this->width * this->width)) /
+       (this->width * this->width) *
+       std::exp(-x_minus_xi.norm_square() /
+                (this->width * this->width)));
+    return_value += laplacian;
+  }
+  return return_value / Utilities::fixed_power<dim>(std::sqrt(2 * pi) *
+                                                    this->width);
+}
+
+template <int dim>
+dealii::VectorizedArray<double> Solution<dim>::laplacian (const Point<dim,dealii::VectorizedArray<double>>   &p,
+                                                          const unsigned int) const
+{
+  const double pi = numbers::PI;
+  dealii::VectorizedArray<double> return_value = make_vectorized_array(0.0);
+  for (unsigned int i=0; i<this->n_source_centers; ++i)
+  {
+    const Tensor<1,dim,dealii::VectorizedArray<double> > x_minus_xi = p - vectorize_point(this->source_centers[i]);
+
+    dealii::VectorizedArray<double> laplacian =
+      ((-2.0*dim + 4.0*x_minus_xi.norm_square()/
         (this->width * this->width)) /
        (this->width * this->width) *
        std::exp(-x_minus_xi.norm_square() /
