@@ -178,6 +178,11 @@ public:
   void cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,
                  const LocOp &loc_op) const;
 
+  // same but for only a single vector (the destination)
+  template <typename LocOp>
+  void cell_loop(GpuVector<Number> &dst,
+                 const LocOp &loc_op) const;
+
   void free();
 
   template <typename Op>
@@ -298,6 +303,32 @@ __global__ void apply_kernel_shmem (Number                          *dst,
   }
 }
 
+template <typename LocOp,int dim, typename Number>
+__global__ void apply_kernel_shmem (Number                          *dst,
+                                    const LocOp                    loc_op,
+                                    const typename MatrixFreeGpu<dim,Number>::GpuData gpu_data)
+{
+  const unsigned int cells_per_block = cells_per_block_shmem(dim,LocOp::n_dofs_1d-1);
+
+  // TODO: make use of dynamically allocated shared memory to avoid this mess.
+  __shared__ Number values[cells_per_block*LocOp::n_local_dofs];
+  __shared__ Number gradients[dim][cells_per_block*LocOp::n_q_points];
+
+  const unsigned int local_cell = (threadIdx.x/LocOp::n_dofs_1d);
+  const unsigned int cell = local_cell + cells_per_block*(blockIdx.x+gridDim.x*blockIdx.y);
+
+  Number *gq[dim];
+  for(int d = 0; d < dim; ++d) gq[d] = &gradients[d][local_cell*LocOp::n_q_points];
+
+  SharedData<dim,Number> shdata(&values[local_cell*LocOp::n_local_dofs],gq);
+
+  if(cell < gpu_data.n_cells) {
+    loc_op.cell_apply(dst,&gpu_data,cell,&shdata);
+  }
+}
+
+
+
 template <int dim, typename Number>
 template <typename LocOp>
 void MatrixFreeGpu<dim,Number>::cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,
@@ -306,6 +337,19 @@ void MatrixFreeGpu<dim,Number>::cell_loop(GpuVector<Number> &dst, const GpuVecto
   for(int c = 0; c < num_colors; ++c) {
 
     apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[c],block_dim[c]>>> (dst.getData(), src.getDataRO(),
+                                                                         loc_op, get_gpu_data(c));
+    CUDA_CHECK_LAST;
+  }
+}
+
+template <int dim, typename Number>
+template <typename LocOp>
+void MatrixFreeGpu<dim,Number>::cell_loop(GpuVector<Number> &dst,
+                                          const LocOp &loc_op) const
+{
+  for(int c = 0; c < num_colors; ++c) {
+
+    apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[c],block_dim[c]>>> (dst.getData(),
                                                                          loc_op, get_gpu_data(c));
     CUDA_CHECK_LAST;
   }
