@@ -141,6 +141,9 @@ public:
   // element-wise division
   GpuVector<Number>& operator/=(const GpuVector<Number> &x);
 
+  // element-wise inversion
+  GpuVector<Number>& invert();
+
   // scaled assignment of a vector
   void equ (const Number a,
             const GpuVector<Number> &x);

@@ -267,6 +267,17 @@ __global__ void vec_init(Number *v, const Number a, const int N)
   }
 }
 
+template <typename Number>
+__global__ void vec_invert(Number *v, const int N)
+{
+  const int idx_base = threadIdx.x + blockIdx.x*(blockDim.x*CHUNKSIZE_ELEMWISE_OP);
+
+  for(int c = 0; c < CHUNKSIZE_ELEMWISE_OP; ++c) {
+    const int idx=idx_base+c*BKSIZE_ELEMWISE_OP;
+    if(idx < N)
+      v[idx] = 1.0/v[idx];
+  }
+}
 
 
 // scaled addition of vectors
@@ -295,7 +306,13 @@ GpuVector<Number>& GpuVector<Number>::operator/= (const GpuVector<Number> &x) {
   return *this;
 }
 
-
+template <typename Number>
+GpuVector<Number>& GpuVector<Number>::invert()
+{
+  const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
+  vec_invert<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,_size);
+  return *this;
+}
 
 // scaled assignment of a vector
 template <typename Number>
