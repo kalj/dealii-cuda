@@ -65,10 +65,9 @@ public:
   void
   initialize_dof_vector(VectorType &vector) const;
 
-  // diagonal for preconditioning
-  void set_diagonal (const VectorType &diagonal);
-
   const std::shared_ptr<DiagonalMatrix<VectorType>> get_diagonal_inverse () const;
+
+  void compute_diagonal();
 
   std::size_t memory_consumption () const;
 
@@ -80,6 +79,11 @@ private:
                     VectorType                      &dst,
                     const VectorType                &src,
                     const std::pair<unsigned int,unsigned int> &cell_range) const;
+
+  void local_compute_diagonal (const MatrixFree<dim,number>                     &data,
+                               VectorType       &dst,
+                               const unsigned int                               &dummy,
+                               const std::pair<unsigned int,unsigned int>       &cell_range) const;
 
   void evaluate_coefficient();
 

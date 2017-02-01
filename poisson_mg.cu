@@ -242,8 +242,6 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
-  Vector<number>     diagonal(dof_handler.n_dofs());
-  Vector<number> local_diagonal(dofs_per_cell);
   Vector<number> local_rhs(dofs_per_cell);
 
   std::vector<number> coefficient_values(n_q_points);
@@ -262,7 +260,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
     cell->get_dof_indices (local_dof_indices);
     fe_values.reinit (cell);
 
-    // coefficient needed here for rhs (and diagonal)
+    // coefficient needed here for rhs
     coeff.value_list(fe_values.get_quadrature_points(), coefficient_values);
 
     fe_values.get_function_gradients(solution_host, solution_gradients);
@@ -270,7 +268,6 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
     for (unsigned int i=0; i<dofs_per_cell; ++i)
     {
-      number diag_val = 0;
       number rhs_val = 0;
 
       for (unsigned int q=0; q<n_q_points; ++q) {
@@ -279,24 +276,16 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
                      * coefficient_values[q]
                      ) *
                     fe_values.JxW(q));
-
-        diag_val += ((fe_values.shape_grad(i,q) *
-                      fe_values.shape_grad(i,q)) *
-                     coefficient_values[q] * fe_values.JxW(q));
       }
 
-      local_diagonal(i) = diag_val;
       local_rhs(i) = rhs_val;
     }
 
     constraints.distribute_local_to_global(local_rhs,local_dof_indices,
                                            system_rhs_host);
-    constraints.distribute_local_to_global(local_diagonal,
-                                           local_dof_indices,
-                                           diagonal);
   }
 
-  system_matrix.set_diagonal(diagonal);
+  system_matrix.compute_diagonal();
   system_rhs = system_rhs_host;
 
   setup_time += time.wall_time();
@@ -309,83 +298,9 @@ void LaplaceProblem<dim,fe_degree>::assemble_multigrid ()
 {
   Timer time;
 
-  // for the diagonal of the level matrices, we need a ConstraintMatrix per
-  // level
-
-  MGLevelObject<ConstraintMatrix>  mg_constraints;
-  {
-    const unsigned int nlevels = triangulation.n_levels();
-    mg_constraints.resize (0, nlevels-1);
-
-    typename FunctionMap<dim>::type dirichlet_boundary;
-    ZeroFunction<dim>               homogeneous_dirichlet_bc (1);
-    dirichlet_boundary[0] = &homogeneous_dirichlet_bc;
-
-    std::vector<std::set<types::global_dof_index> > boundary_indices(nlevels);
-
-    MGTools::make_boundary_list (dof_handler,
-                                 dirichlet_boundary,
-                                 boundary_indices);
-
-    for (unsigned int level=0; level<nlevels; ++level)
-    {
-      std::set<types::global_dof_index>::iterator bc_it = boundary_indices[level].begin();
-
-      for ( ; bc_it != boundary_indices[level].end(); ++bc_it)
-        mg_constraints[level].add_line(*bc_it);
-
-
-      mg_constraints[level].close();
-    }
-
-  }
-
-  QGauss<dim>  quadrature_formula(fe.degree+1);
-  FEValues<dim> fe_values (fe, quadrature_formula,
-                           update_gradients  | update_inverse_jacobians |
-                           update_quadrature_points | update_JxW_values);
-
-  const unsigned int   dofs_per_cell = fe.dofs_per_cell;
-  const unsigned int   n_q_points    = quadrature_formula.size();
-
-  std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
-  const CoefficientFun<dim,number> coeff;
-  std::vector<number>       coefficient_values (n_q_points);
-  Vector<number>            local_diagonal (dofs_per_cell);
-
   const unsigned int n_levels = triangulation.n_levels();
-  std::vector<Vector<double> > diagonals (n_levels);
   for (unsigned int level=0; level<n_levels; ++level)
-    diagonals[level].reinit (dof_handler.n_dofs(level));
-
-  std::vector<unsigned int> cell_no(triangulation.n_levels());
-  typename DoFHandler<dim>::cell_iterator cell = dof_handler.begin(),
-    endc = dof_handler.end();
-  for (; cell!=endc; ++cell)
-  {
-    const unsigned int level = cell->level();
-    cell->get_mg_dof_indices (local_dof_indices);
-    fe_values.reinit (cell);
-    coeff.value_list (fe_values.get_quadrature_points(),
-                            coefficient_values);
-
-    for (unsigned int i=0; i<dofs_per_cell; ++i)
-    {
-      double local_diag = 0;
-      for (unsigned int q=0; q<n_q_points; ++q)
-        local_diag += ((fe_values.shape_grad(i,q) *
-                        fe_values.shape_grad(i,q)) *
-                       coefficient_values[q] * fe_values.JxW(q));
-      local_diagonal(i) = local_diag;
-    }
-    mg_constraints[level].distribute_local_to_global(local_diagonal,
-                                                     local_dof_indices,
-                                                     diagonals[level]);
-
-  }
-
-  for (unsigned int level=0; level<n_levels; ++level)
-    mg_matrices[level].set_diagonal (diagonals[level]);
+    mg_matrices[level].compute_diagonal ();
 
   setup_time += time.wall_time();
   time_details << "Assemble MG diagonal       (CPU/wall) "

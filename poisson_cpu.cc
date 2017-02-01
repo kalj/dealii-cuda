@@ -170,8 +170,6 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
-  Vector<number> diagonal(dof_handler.n_dofs());
-  Vector<number> local_diagonal(dofs_per_cell);
   Vector<number> local_rhs(dofs_per_cell);
 
   std::vector<number> coefficient_values(n_q_points);
@@ -189,7 +187,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
     cell->get_dof_indices (local_dof_indices);
     fe_values.reinit (cell);
 
-    // coefficient needed here for diagonal
+    // coefficient needed here for rhs
     coeff.value_list(fe_values.get_quadrature_points(), coefficient_values);
 
     fe_values.get_function_gradients(solution, solution_gradients);
@@ -206,26 +204,16 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
                      * coefficient_values[q]
                      ) *
                     fe_values.JxW(q));
-
-
-        diag_val += ((fe_values.shape_grad(i,q) *
-                      fe_values.shape_grad(i,q)) *
-                     coefficient_values[q] * fe_values.JxW(q));
       }
 
-      local_diagonal(i) = diag_val;
       local_rhs(i) = rhs_val;
     }
 
     constraints.distribute_local_to_global(local_rhs,local_dof_indices,
                                            system_rhs);
-
-    constraints.distribute_local_to_global(local_diagonal,
-                                           local_dof_indices,
-                                           diagonal);
   }
 
-  system_matrix.set_diagonal(diagonal);
+  system_matrix.compute_diagonal();
 
   setup_time += time.wall_time();
   time_details << "Assemble right hand side   (CPU/wall) "

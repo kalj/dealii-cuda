@@ -75,7 +75,7 @@ public:
   }
 
   // diagonal for preconditioning
-  void set_diagonal (const Vector<Number> &diagonal);
+  void compute_diagonal ();
 
   const std::shared_ptr<DiagonalMatrix<VectorType>> get_diagonal_inverse () const;
 
@@ -245,7 +245,6 @@ LaplaceOperatorGpu<dim,fe_degree,Number>::Tvmult_add (VectorType       &dst,
 }
 
 // This is the struct we pass to matrix-free for evaluation on each cell
-
 template <int dim, int fe_degree, typename Number>
 struct LocalOperator {
   // coefficient values at this cell
@@ -354,20 +353,70 @@ vmult_interface_up(VectorType       &dst,
 }
 
 
+template <int dim, int fe_degree, typename Number>
+struct DiagonalLocalOperator {
+  // coefficient values at this cell
+  const Number *coefficient;
+  static const unsigned int n_dofs_1d = fe_degree+1;
+  static const unsigned int n_q_points_1d = fe_degree+1;
+  static const unsigned int n_local_dofs = ipow<n_dofs_1d,dim>::val;
+  static const unsigned int n_q_points = ipow<n_q_points_1d,dim>::val;
+
+  // what to do fore each cell
+  __device__ void cell_apply (Number                          *dst,
+                              const typename MatrixFreeGpu<dim,Number>::GpuData *gpu_data,
+                              const unsigned int cell,
+                              SharedData<dim,Number> *shdata) const
+  {
+    FEEvaluationGpu<dim,fe_degree,Number> phi (cell, gpu_data, shdata);
+
+    Number my_diagonal = 0.0;
+
+    const unsigned int tid = (dim==1 ? threadIdx.x%n_q_points_1d :
+                              dim==2 ? threadIdx.x%n_q_points_1d + n_q_points_1d*threadIdx.y :
+                              threadIdx.x%n_q_points_1d + n_q_points_1d*(threadIdx.y + n_q_points_1d*threadIdx.z));
+
+    for (unsigned int i=0; i<n_local_dofs; ++i)
+    {
+      // set to unit vector
+      phi.submit_dof_value(i==tid?1.0:0.0, tid);
+
+      __syncthreads();
+      phi.evaluate (false, true);
+
+      phi.submit_gradient (coefficient[phi.get_global_q(tid)] *
+                           phi.get_gradient(tid), tid);
+      __syncthreads();
+      phi.integrate (false, true);
+
+      if(tid==i)
+        my_diagonal = phi.get_value(tid);
+    }
+    __syncthreads();
+
+    phi.submit_dof_value(my_diagonal, tid);
+
+    phi.distribute_local_to_global (dst);
+  }
+};
+
+
+
 // set diagonal (and set values correponding to constrained DoFs to 1)
 template <int dim, int fe_degree, typename Number>
 void
-LaplaceOperatorGpu<dim,fe_degree,Number>::set_diagonal(const Vector<Number> &diagonal)
+LaplaceOperatorGpu<dim,fe_degree,Number>::compute_diagonal()
 {
-  AssertDimension (m(), diagonal.size());
+  VectorType &inv_diag = inverse_diagonal_matrix->get_vector();
 
-  VectorType &diag = inverse_diagonal_matrix->get_vector();
+  inv_diag.reinit(m());
 
-  diag.reinit(m());
-  diag = 1.0;
-  diag /= VectorType(diagonal);
+  DiagonalLocalOperator<dim,fe_degree,Number> diag_loc_op{coefficient.getDataRO()};
+  data.cell_loop (inv_diag,diag_loc_op);
 
-  constraint_handler.set_constrained_values(diag,1.0);
+  constraint_handler.set_constrained_values(inv_diag,1.0);
+
+  inv_diag.invert();
 
   diagonal_is_available = true;
 }

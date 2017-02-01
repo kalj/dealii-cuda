@@ -291,26 +291,65 @@ LaplaceOperatorCpu<dim,fe_degree,number>::el (const unsigned int row,
 
 template <int dim, int fe_degree, typename number>
 void
-LaplaceOperatorCpu<dim,fe_degree,number>::set_diagonal(const VectorType &diagonal)
+LaplaceOperatorCpu<dim,fe_degree,number>::compute_diagonal()
 {
-  AssertDimension (m(), diagonal.size());
+  inverse_diagonal_matrix.
+    reset(new DiagonalMatrix<VectorType >());
+  VectorType &inverse_diagonal = inverse_diagonal_matrix->get_vector();
 
-  VectorType &diag = inverse_diagonal_matrix->get_vector();
+  data.initialize_dof_vector(inverse_diagonal);
 
-  diag.reinit(m());
-  for(int i = 0; i < m(); ++i) {
-    diag[i] = 1.0/diagonal[i];
-  }
+  unsigned int dummy = 0;
+  data.cell_loop (&LaplaceOperatorCpu::local_compute_diagonal, this,
+                  inverse_diagonal, dummy);
 
   const std::vector<unsigned int> &
     constrained_dofs = data.get_constrained_dofs();
   for (unsigned int i=0; i<constrained_dofs.size(); ++i)
-    diag(constrained_dofs[i]) = 1.0;
-
+    inverse_diagonal(constrained_dofs[i]) = 1.;
   for (unsigned int i=0; i<edge_constrained_indices.size(); ++i)
-    diag(edge_constrained_indices[i]) = 1.0;
+    inverse_diagonal(edge_constrained_indices[i]) = 1.;
 
-  diagonal_is_available = true;
+  for (unsigned int i=0; i<inverse_diagonal.size(); ++i)
+    inverse_diagonal(i) =
+      1./inverse_diagonal(i);
+}
+
+
+
+
+template <int dim, int fe_degree, typename number>
+void
+LaplaceOperatorCpu<dim,fe_degree,number>
+::local_compute_diagonal (const MatrixFree<dim,number>               &data,
+                          VectorType &dst,
+                          const unsigned int &,
+                          const std::pair<unsigned int,unsigned int> &cell_range) const
+{
+  FEEvaluation<dim,fe_degree,fe_degree+1,1,number> phi (data);
+
+  AlignedVector<VectorizedArray<number> > diagonal(phi.dofs_per_cell);
+
+  for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
+  {
+    phi.reinit (cell);
+    for (unsigned int i=0; i<phi.dofs_per_cell; ++i)
+    {
+      for (unsigned int j=0; j<phi.dofs_per_cell; ++j)
+        phi.submit_dof_value(VectorizedArray<number>(), j);
+      phi.submit_dof_value(make_vectorized_array<number>(1.), i);
+
+      phi.evaluate (false, true);
+      for (unsigned int q=0; q<phi.n_q_points; ++q)
+        phi.submit_gradient (coefficient(cell,q) *
+                             phi.get_gradient(q), q);
+      phi.integrate (false, true);
+      diagonal[i] = phi.get_dof_value(i);
+    }
+    for (unsigned int i=0; i<phi.dofs_per_cell; ++i)
+      phi.submit_dof_value(diagonal[i], i);
+    phi.distribute_local_to_global (dst);
+  }
 }
 
 template <int dim, int fe_degree, typename number>
