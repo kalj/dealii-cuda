@@ -307,6 +307,9 @@ LaplaceOperatorCpu<dim,fe_degree,number>::set_diagonal(const VectorType &diagona
   for (unsigned int i=0; i<constrained_dofs.size(); ++i)
     diag(constrained_dofs[i]) = 1.0;
 
+  for (unsigned int i=0; i<edge_constrained_indices.size(); ++i)
+    diag(edge_constrained_indices[i]) = 1.0;
+
   diagonal_is_available = true;
 }
 
