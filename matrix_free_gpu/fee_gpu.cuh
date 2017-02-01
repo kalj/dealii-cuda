@@ -129,6 +129,11 @@ public:
   __device__ void evaluate(const bool evaluate_val,
                            const bool evaluate_grad);
 
+
+  // specify value or gradient at dof
+  __device__ void submit_dof_value(const Number &val, const unsigned int i);
+  // __device__ void submit_gradient(const gradient_type &grad, const unsigned int q);
+
   // specify value or gradient at quadrature point
   __device__ void submit_value(const Number &val, const unsigned int q);
   __device__ void submit_gradient(const gradient_type &grad, const unsigned int q);
@@ -225,6 +230,11 @@ FEEvaluationGpu<dim,fe_degree,Number>::get_gradient(const unsigned int q) const
   return grad;
 }
 
+template <int dim, int fe_degree, typename Number>
+__device__ void FEEvaluationGpu<dim,fe_degree,Number>::submit_dof_value(const Number &val, const unsigned int i)
+{
+  values[i] = val;
+}
 
 template <int dim, int fe_degree, typename Number>
 __device__ void FEEvaluationGpu<dim,fe_degree,Number>::submit_value(const Number &val, const unsigned int q)
