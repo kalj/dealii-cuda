@@ -159,6 +159,7 @@ private:
 template <int dim, int fe_degree>
 LaplaceProblem<dim,fe_degree>::LaplaceProblem ()
   :
+  triangulation (Triangulation<dim>::limit_level_difference_at_vertices),
   fe (fe_degree),
   dof_handler (triangulation),
   time_details (std::cout, false)
