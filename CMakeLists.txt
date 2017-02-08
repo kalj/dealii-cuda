@@ -96,8 +96,14 @@ TARGET_LINK_LIBRARIES(poisson_mg_cpu ${LIBRARIES})
 CUDA_ADD_EXECUTABLE(bmop bmop.cu poisson_common.cc)
 TARGET_LINK_LIBRARIES(bmop matrix_free_lib ${LIBRARIES} )
 
+CUDA_ADD_EXECUTABLE(bmop_mg bmop_mg.cu poisson_common.cc)
+TARGET_LINK_LIBRARIES(bmop_mg matrix_free_lib ${LIBRARIES} )
+
 CUDA_ADD_EXECUTABLE(bmop_spm bmop_spm.cu poisson_common.cc)
 TARGET_LINK_LIBRARIES(bmop_spm matrix_free_lib ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
 
-CUDA_ADD_EXECUTABLE(bmop-cpu bmop-cpu.cc laplace_operator_cpu.cc)
+CUDA_ADD_EXECUTABLE(bmop-cpu bmop-cpu.cc laplace_operator_cpu.cc poisson_common.cc)
 TARGET_LINK_LIBRARIES(bmop-cpu ${LIBRARIES})
+
+CUDA_ADD_EXECUTABLE(bmop_mg_cpu bmop_mg_cpu.cc laplace_operator_cpu.cc poisson_common.cc)
+TARGET_LINK_LIBRARIES(bmop_mg_cpu  ${LIBRARIES} )
