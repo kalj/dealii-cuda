@@ -52,6 +52,7 @@
 template class Multigrid< GpuVector<double> >;
 
 
+bool QUIET=false;
 
 using namespace dealii;
 
@@ -96,7 +97,7 @@ class LaplaceProblem
 {
 public:
   LaplaceProblem ();
-  void run ();
+  void run (unsigned int min_cycle, unsigned int max_cycle);
 
 private:
   void setup_system ();
@@ -153,13 +154,15 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
   dof_handler.distribute_dofs (fe);
   dof_handler.distribute_mg_dofs (fe);
 
-  std::cout << "Number of degrees of freedom: "
-            << dof_handler.n_dofs()
-            << std::endl;
+  if(!QUIET) {
+    std::cout << "Number of degrees of freedom: "
+              << dof_handler.n_dofs()
+              << std::endl;
 
-  std::cout << "Number of elements: "
-            << triangulation.n_active_cells()
-            << std::endl;
+    std::cout << "Number of elements: "
+              << triangulation.n_active_cells()
+              << std::endl;
+  }
 
   constraints.clear();
   VectorTools::interpolate_boundary_values (dof_handler,
@@ -175,11 +178,13 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
   time.restart();
 
   system_matrix.reinit (dof_handler, constraints);
-  std::cout.precision(4);
-  std::cout << "System matrix memory consumption:     "
-            << system_matrix.memory_consumption()*1e-6
-            << " MB."
-            << std::endl;
+  if(!QUIET) {
+    std::cout.precision(4);
+    std::cout << "System matrix memory consumption:     "
+              << system_matrix.memory_consumption()*1e-6
+              << " MB."
+              << std::endl;
+  }
 
   solution_host.reinit (dof_handler.n_dofs());
   solution_update.reinit (dof_handler.n_dofs());
@@ -493,18 +498,23 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   const std::size_t multigrid_memory
     = (mg_matrices.memory_consumption() +
        mg_transfer.memory_consumption());
-  std::cout << "Multigrid objects memory consumption: "
-            << multigrid_memory * 1e-6
-            << " MB."
-            << std::endl;
+  if(!QUIET) {
+    std::cout << "Multigrid objects memory consumption: "
+              << multigrid_memory * 1e-6
+              << " MB."
+              << std::endl;
+  }
 
   SolverControl           solver_control (10000, 1e-12*system_rhs.l2_norm());
   SolverCG<VectorType >              cg (solver_control);
   setup_time += time.wall_time();
   time_details << "Solver/prec. setup time    (CPU/wall) " << time()
                << "s/" << time.wall_time() << "s\n";
-  std::cout << "Total setup time               (wall) " << setup_time
-            << "s\n";
+
+  if(!QUIET) {
+    std::cout << "Total setup time               (wall) " << setup_time
+              << "s\n";
+  }
 
   time.reset();
   time.start();
@@ -513,10 +523,15 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
   time.stop();
 
-  std::cout << "Time solve ("
-            << solver_control.last_step()
-            << " iterations)  (CPU/wall) " << time() << "s/"
-            << time.wall_time() << "s\n";
+  if(!QUIET) {
+    std::cout << "Time solve ("
+              << solver_control.last_step()
+              << " iterations)  (CPU/wall) " << time() << "s/"
+              << time.wall_time() << "s\n";
+  }
+  else {
+    printf("%8d %8d %12d %5d %14.8g\n", dim,fe_degree,dof_handler.n_dofs(),solver_control.last_step(), time.wall_time());
+  }
 
 
   Vector<number> solution_update_host = solution_update.toVector();
@@ -524,17 +539,19 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   solution_host += solution_update_host;
 
 
-  Vector<float> difference_per_cell (triangulation.n_active_cells());
-  VectorTools::integrate_difference (dof_handler,
-                                     solution_host,
-                                     Solution<dim>(),
-                                     difference_per_cell,
-                                     QGauss<dim>(fe.degree+2),
-                                     VectorTools::L2_norm);
-  const double L2_error = difference_per_cell.norm_sqr();
+  if(!QUIET) {
+    Vector<float> difference_per_cell (triangulation.n_active_cells());
+    VectorTools::integrate_difference (dof_handler,
+                                       solution_host,
+                                       Solution<dim>(),
+                                       difference_per_cell,
+                                       QGauss<dim>(fe.degree+2),
+                                       VectorTools::L2_norm);
+    const double L2_error = difference_per_cell.norm_sqr();
 
-  std::cout.precision(6);
-  std::cout << "L2 error: " << L2_error << std::endl;
+    std::cout.precision(6);
+    std::cout << "L2 error: " << L2_error << std::endl;
+  }
 
 }
 
@@ -561,20 +578,25 @@ void LaplaceProblem<dim,fe_degree>::output_results (const unsigned int cycle) co
 
 
 template <int dim, int fe_degree>
-void LaplaceProblem<dim,fe_degree>::run ()
+void LaplaceProblem<dim,fe_degree>::run (unsigned min_cycle, unsigned max_cycle)
 {
 
   domain_case_t domain = CUBE;
   grid_case_t initial_grid = UNIFORM;
   grid_case_t grid_refinement = UNIFORM;
 
-  for (unsigned int cycle=0; cycle<7-dim; ++cycle)
-  {
-    std::cout << "Cycle " << cycle << std::endl;
+  create_mesh(triangulation,domain,initial_grid);
 
-    if (cycle == 0)
-      create_mesh(triangulation,domain,initial_grid);
-    else
+  for (unsigned int cycle=0; cycle<min_cycle; ++cycle)
+    refine_mesh(triangulation,grid_refinement);
+
+  for (unsigned int cycle=min_cycle; cycle<=max_cycle; ++cycle)
+  {
+    if(!QUIET) {
+      std::cout << "Cycle " << cycle << std::endl;
+    }
+
+    if(cycle!=min_cycle)
       refine_mesh(triangulation,grid_refinement);
 
     setup_system ();
@@ -584,9 +606,13 @@ void LaplaceProblem<dim,fe_degree>::run ()
     // run_tests ();
 
     solve ();
-    output_results (cycle);
+    if(!QUIET) {
+      output_results (cycle);
+    }
 
-    std::cout << std::endl;
+    if(!QUIET) {
+      std::cout << std::endl;
+    }
   }
 
 }
@@ -605,17 +631,34 @@ const unsigned int dimension = 3;
 #endif
 
 
-int main()
+int main (int argc, char **argv)
 {
+  unsigned int min_cycle = 0;
+  unsigned int max_cycle = 6-dimension;
 
   srand(1);
-  printf("d: %d, p: %d\n",dimension,degree_finite_element);
 
   try
   {
     deallog.depth_console(0);
+    if(argc > 1)
+      if(strcmp("-q",argv[1])==0)
+      {
+        QUIET=true;
+        argv++;
+        argc--;
+      }
+
+    if(argc > 1)
+      min_cycle = atoi(argv[1]);
+
+    if(argc > 2)
+      max_cycle = atoi(argv[2]);
+
+    if(!QUIET) printf("d: %d, p: %d\n",dimension,degree_finite_element);
+
     LaplaceProblem<dimension,degree_finite_element> laplace_problem;
-    laplace_problem.run ();
+    laplace_problem.run (min_cycle,max_cycle);
   }
   catch (std::exception &exc)
   {
