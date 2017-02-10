@@ -28,13 +28,17 @@ if [ "$3" == "j0" ] ; then
     USE_J0=1
 fi
 
-if [ "$4" == "hn" ] ; then
-    HANGING=1
-fi
-
 if [ "$5" == "adaptive" ] ; then
     ADAPTIVE=1
 fi
+
+if [ "$4" == "hn" ] ; then
+    HANGING=1
+elif [ "$4" != "nohn" ] ; then
+    # if not specified explicitly, configure according to mesh type
+    HANGING=$ADAPTIVE
+fi
+
 
 
 if [ "$ADAPTIVE" == 1 ] && [ "$HANGING" != 1 ] ; then
