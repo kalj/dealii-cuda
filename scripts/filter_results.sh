@@ -24,7 +24,7 @@ for m in cube ball  ; do
                             f="${b}/${t}_gpu_output.log"
 
                             if [ -f $f ] ; then
-                                grep '^[23]' $f | awk "{printf \"%10s%10d\t%10d\t%10d\t%10g\n\", \"${meth}\", \$1, \$2, \$3, \$4; }"
+                                grep '^\s*[23]' $f | awk "{print \"${meth}\", \$0; }"
                             fi
                         done
                     done
