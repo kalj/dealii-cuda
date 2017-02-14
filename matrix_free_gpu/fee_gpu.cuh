@@ -56,7 +56,9 @@ protected:
   const unsigned int cellid;
 
   // information on hanging node constraints
+#ifdef MATRIX_FREE_HANGING_NODES
   const unsigned int constraint_mask;
+#endif
 
 public:
 
@@ -66,7 +68,9 @@ public:
     :
     n_cells(data->n_cells),
     cellid(cellid),
+#ifdef MATRIX_FREE_HANGING_NODES
     constraint_mask(data->constraint_mask[cellid]),
+#endif
     use_coloring(data->use_coloring)
   {
   }
@@ -104,7 +108,9 @@ private:
   using FEEvaluationGpuBase<dim,fe_degree,Number>::n_cells;
 
   using FEEvaluationGpuBase<dim,fe_degree,Number>::use_coloring;
+#ifdef MATRIX_FREE_HANGING_NODES
   using FEEvaluationGpuBase<dim,fe_degree,Number>::constraint_mask;
+#endif
 
 
   // internal buffers

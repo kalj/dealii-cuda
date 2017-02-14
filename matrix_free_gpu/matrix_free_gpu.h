@@ -114,7 +114,9 @@ private:
   std::vector<Number*>          JxW;
 
   // constraints
+#ifdef MATRIX_FREE_HANGING_NODES
   std::vector<unsigned int*>    constraint_mask;
+#endif
 
   // GPU kernel parameters
   std::vector<dim3> grid_dim;
@@ -140,7 +142,9 @@ public:
     Number         *inv_jac;
     Number         *JxW;
 
+#ifdef MATRIX_FREE_HANGING_NODES
     unsigned int   *constraint_mask;
+#endif
 
     unsigned int n_cells;
 
@@ -232,7 +236,9 @@ MatrixFreeGpu<dim,Number>::get_gpu_data(unsigned int color) const
   data.loc2glob = loc2glob[color];
   data.inv_jac = inv_jac[color];
   data.JxW = JxW[color];
+#ifdef MATRIX_FREE_HANGING_NODES
   data.constraint_mask = constraint_mask[color];
+#endif
   data.n_cells = n_cells[color];
   data.use_coloring = use_coloring;
   data.rowlength = rowlength;
@@ -408,8 +414,10 @@ std::size_t MatrixFreeGpu<dim,Number>::memory_consumption() const
       n_cells[c]*rowlength*sizeof(unsigned int)     // loc2glob
       + n_cells[c]*rowlength*dim*dim*sizeof(Number) // inv_jac
       + n_cells[c]*rowlength*sizeof(Number)         // JxW
-      + n_cells[c]*rowlength*sizeof(point_type)     // quadrature_points
-      + n_cells[c]*sizeof(unsigned int);            // constraint_mask
+      + n_cells[c]*rowlength*sizeof(point_type);    // quadrature_points
+#ifdef MATRIX_FREE_HANGING_NODES
+      bytes += n_cells[c]*sizeof(unsigned int);     // constraint_mask
+#endif
   }
 
   return bytes;

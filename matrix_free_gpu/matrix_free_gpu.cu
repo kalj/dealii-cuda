@@ -40,7 +40,9 @@ private:
   std::vector<Number> JxW_host;
   std::vector<Number> inv_jac_host;
 
+#ifdef MATRIX_FREE_HANGING_NODES
   std::vector<unsigned int> constraint_mask_host;
+#endif
 
   // local buffers
   std::vector<types::global_dof_index> local_dof_indices;
@@ -190,7 +192,9 @@ void ReinitHelper<dim,Number>::setup_color_arrays(const unsigned int num_colors)
   data->grid_dim.resize(num_colors);
   data->block_dim.resize(num_colors);
   data->loc2glob.resize(num_colors);
+#ifdef MATRIX_FREE_HANGING_NODES
   data->constraint_mask.resize(num_colors);
+#endif
 
   data->rowstart.resize(num_colors);
 
@@ -544,14 +548,18 @@ void MatrixFreeGpu<dim,Number>::free()
   for(int c = 0; c < JxW.size(); ++c) {
     if(JxW[c] != NULL)               CUDA_CHECK_SUCCESS(cudaFree(JxW[c]));
   }
+#ifdef MATRIX_FREE_HANGING_NODES
   for(int c = 0; c < constraint_mask.size(); ++c) {
     if(constraint_mask[c] != NULL)   CUDA_CHECK_SUCCESS(cudaFree(constraint_mask[c]));
   }
+#endif
 
   quadrature_points.clear();
   loc2glob.clear();
   inv_jac.clear();
   JxW.clear();
+#ifdef MATRIX_FREE_HANGING_NODES
   constraint_mask.clear();
+#endif
 
 }
