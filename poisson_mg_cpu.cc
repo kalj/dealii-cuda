@@ -50,19 +50,22 @@ typedef double number;
 typedef double level_number;
 // typedef float level_number;
 
-// typedef LinearAlgebra::distributed::Vector<number> VectorType;
-typedef Vector<number> VectorType;
+
+template <typename Number>
+using VectorType = Vector<Number>;
+// template <typename Number>
+// using VectorType = LinearAlgebra::distributed::Vector<Number>;
 
 bool QUIET=false;
 
 template <typename LAPLACEOPERATOR>
-class MGTransferMF : public MGTransferPrebuilt< VectorType >
+class MGTransferMF : public MGTransferPrebuilt< typename LAPLACEOPERATOR::VectorType >
 {
 public:
   MGTransferMF(const MGLevelObject<LAPLACEOPERATOR> &laplace,
                const MGConstrainedDoFs &mg_constrained_dofs)
     :
-    MGTransferPrebuilt<VectorType >(mg_constrained_dofs),
+    MGTransferPrebuilt<typename LAPLACEOPERATOR::VectorType >(mg_constrained_dofs),
     laplace_operator (laplace)
   {
   }
@@ -75,13 +78,13 @@ public:
   template <int dim, class InVector, int spacedim>
   void
   copy_to_mg (const DoFHandler<dim,spacedim> &mg_dof_handler,
-              MGLevelObject<VectorType > &dst,
+              MGLevelObject<typename LAPLACEOPERATOR::VectorType > &dst,
               const InVector &src) const
   {
     for (unsigned int level=dst.min_level();
          level<=dst.max_level(); ++level)
       laplace_operator[level].initialize_dof_vector(dst[level]);
-    MGTransferPrebuilt<VectorType >:: copy_to_mg(mg_dof_handler, dst, src);
+    MGTransferPrebuilt<typename LAPLACEOPERATOR::VectorType >:: copy_to_mg(mg_dof_handler, dst, src);
   }
 
 private:
@@ -91,7 +94,7 @@ private:
 
 // coarse solver
 template<typename MatrixType, typename Number>
-class MGCoarseIterative : public MGCoarseGridBase<VectorType >
+class MGCoarseIterative : public MGCoarseGridBase<VectorType<Number> >
 {
 public:
   MGCoarseIterative() {}
@@ -102,11 +105,11 @@ public:
   }
 
   virtual void operator() (const unsigned int   level,
-                           VectorType &dst,
-                           const VectorType &src) const
+                           VectorType<Number> &dst,
+                           const VectorType<Number> &src) const
   {
     ReductionControl solver_control (1e4, 1e-50, 1e-10);
-    SolverCG<VectorType > solver_coarse (solver_control);
+    SolverCG<VectorType<Number> > solver_coarse (solver_control);
     solver_coarse.solve (*coarse_matrix, dst, src, PreconditionIdentity());
   }
 
@@ -147,9 +150,9 @@ private:
   MGLevelObject<LevelMatrixType>   mg_matrices;
   MGConstrainedDoFs                mg_constrained_dofs;
 
-  VectorType                       solution;
-  VectorType                       solution_update;
-  VectorType                       system_rhs;
+  VectorType<number>               solution;
+  VectorType<number>               solution_update;
+  VectorType<number>               system_rhs;
 
   double                           setup_time;
   ConditionalOStream               time_details;
@@ -275,9 +278,9 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
 
   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
-  VectorType     diagonal(dof_handler.n_dofs());
-  Vector<number> local_diagonal(dofs_per_cell);
-  Vector<number> local_rhs(dofs_per_cell);
+  VectorType<number>  diagonal(dof_handler.n_dofs());
+  Vector<number>      local_diagonal(dofs_per_cell);
+  Vector<number>      local_rhs(dofs_per_cell);
 
   std::vector<number> coefficient_values(n_q_points);
 
@@ -361,7 +364,7 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   time.restart();
 
   // XXX: this should be with 'number' precision, but LevelMatrixType is with floats
-  MGCoarseIterative<LevelMatrixType,number> mg_coarse;
+  MGCoarseIterative<LevelMatrixType,level_number> mg_coarse;
   mg_coarse.initialize(mg_matrices[0]);
 
   setup_time += time.wall_time();
@@ -370,9 +373,9 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   time.restart();
 
 
-  typedef PreconditionChebyshev<LevelMatrixType,VectorType > SMOOTHER;
+  typedef PreconditionChebyshev<LevelMatrixType,VectorType<level_number> > SMOOTHER;
 
-  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType >
+  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType<level_number> >
     mg_smoother;
 
   MGLevelObject<typename SMOOTHER::AdditionalData> smoother_data;
@@ -391,11 +394,11 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   deallog.depth_file(0);
   mg_smoother.initialize(mg_matrices, smoother_data);
 
-  mg::Matrix<VectorType > mg_matrix(mg_matrices);
+  mg::Matrix<VectorType<level_number> > mg_matrix(mg_matrices);
 
-  mg::Matrix<VectorType > mg_interface(mg_interface_matrices);
+  mg::Matrix<VectorType<level_number> > mg_interface(mg_interface_matrices);
 
-  Multigrid<VectorType > mg(mg_matrix,
+  Multigrid<VectorType<level_number> > mg(mg_matrix,
                             mg_coarse,
                             mg_transfer,
                             mg_smoother,
@@ -403,13 +406,13 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
 
   mg.set_edge_matrices(mg_interface, mg_interface);
 
-  PreconditionMG<dim, VectorType,
+  PreconditionMG<dim, VectorType<level_number>,
                  MGTransferMF<LevelMatrixType> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
   {
     const unsigned int n = system_matrix.m();
-    VectorType check1(n), check2(n),
+    VectorType<level_number> check1(n), check2(n),
       tmp(n), check3(n);
     {
       for (unsigned int i=0; i<n; ++i)
@@ -471,7 +474,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   time.restart();
 
   // XXX: this should be with 'number' precision, but LevelMatrixType is with floats
-  MGCoarseIterative<LevelMatrixType,number> mg_coarse;
+  MGCoarseIterative<LevelMatrixType,level_number> mg_coarse;
   mg_coarse.initialize(mg_matrices[0]);
 
   setup_time += time.wall_time();
@@ -480,9 +483,9 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   time.restart();
 
 
-  typedef PreconditionChebyshev<LevelMatrixType,VectorType > SMOOTHER;
+  typedef PreconditionChebyshev<LevelMatrixType,VectorType<level_number> > SMOOTHER;
 
-  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType >
+  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType<level_number> >
     mg_smoother;
 
   MGLevelObject<typename SMOOTHER::AdditionalData> smoother_data;
@@ -502,11 +505,11 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   mg_smoother.initialize(mg_matrices, smoother_data);
 
 
-  mg::Matrix<VectorType > mg_matrix(mg_matrices);
+  mg::Matrix<VectorType<level_number> > mg_matrix(mg_matrices);
 
-  mg::Matrix<VectorType > mg_interface(mg_interface_matrices);
+  mg::Matrix<VectorType<level_number> > mg_interface(mg_interface_matrices);
 
-  Multigrid<VectorType > mg(mg_matrix,
+  Multigrid<VectorType<level_number> > mg(mg_matrix,
                             mg_coarse,
                             mg_transfer,
                             mg_smoother,
@@ -514,7 +517,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
   mg.set_edge_matrices(mg_interface, mg_interface);
 
-  PreconditionMG<dim, VectorType,
+  PreconditionMG<dim, VectorType<level_number>,
                  MGTransferMF<LevelMatrixType> >
     preconditioner(dof_handler, mg, mg_transfer);
 
@@ -529,7 +532,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   }
 
   SolverControl           solver_control (10000, 1e-12*system_rhs.l2_norm());
-  SolverCG<VectorType >              cg (solver_control);
+  SolverCG<VectorType<number> >              cg (solver_control);
   setup_time += time.wall_time();
   time_details << "Solver/prec. setup time    (CPU/wall) " << time()
                << "s/" << time.wall_time() << "s\n";
