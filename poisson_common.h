@@ -142,34 +142,36 @@ public:
 // coefficient
 //=============================================================================
 
-template <int dim>
+template <int dim, typename Number>
 struct Coefficient
 {
-  template <typename Number>
-  static MAYBECUDA_HOST Number value (const dealii::Point<dim,Number> &p){
+  static MAYBECUDA_HOST Number value (const dealii::Point<dim> &p){
     return 1. / (0.05 + 2.*(p.norm_square()));
     // return 1.;
   }
 
 #ifdef MAYBECUDA_GUARD
-  template <typename Number>
   static __device__ Number value (const GpuArray<dim,Number> &p){
     return 1. / (0.05 + 2.*(p.norm_square()));
     // return 1.;
   }
 #endif
 
-  template <typename Number>
-  static dealii::VectorizedArray<Number> value (const dealii::Point<dim,dealii::VectorizedArray<Number>> &p){
-    return 1. / (0.05 + 2.*(p.norm_square()));
-    // dealii::VectorizedArray<Number> a;
+  template <typename NumberIn>
+  static dealii::VectorizedArray<Number> value (const dealii::Point<dim,dealii::VectorizedArray<NumberIn>> &p){
+    dealii::VectorizedArray<NumberIn> a;
     // a = 1.0;
-    // return a;
+    a = 1. / (0.05 + 2.*(p.norm_square()));
+
+    dealii::VectorizedArray<Number> res;
+    for(int i = 0; i < dealii::VectorizedArray<Number>::n_array_elements; ++i) {
+      res[i] = a[i];
+    }
+    return res;
   }
 
 
-  template <typename Number>
-  static MAYBECUDA_HOST  dealii::Tensor<1,dim,Number> gradient (const dealii::Point<dim,Number> &p){
+  static MAYBECUDA_HOST  dealii::Tensor<1,dim,Number> gradient (const dealii::Point<dim> &p){
     const dealii::Tensor<1,dim,Number> dist = -p;
     const Number den = 0.05 + 2.*dist.norm_square();
     return (4. / (den*den))*dist;
@@ -177,56 +179,62 @@ struct Coefficient
     // return dist;
   }
 
-  // template <typename Number>
-  // static MAYBECUDA_HOST  dealii::Tensor<1,dim,dealii::VectorizedArray<double>> gradient (const dealii::Point<dim,dealii::VectorizedArray<double>> &p){
-  //   const dealii::Tensor<1,dim,dealii::VectorizedArray<double>> dist = -p;
-  //   const dealii::VectorizedArray<double> den = 0.05 + 2.*dist.norm_square();
-  //   return (4. / (den*den))*dist;
-  //   // const dealii::Tensor<1,dim> dist = p*0;
-  //   // return dist;
-  // }
+  static MAYBECUDA_HOST  dealii::Tensor<1,dim,dealii::VectorizedArray<Number>> gradient (const dealii::Point<dim,dealii::VectorizedArray<double>> &p){
+    const dealii::Tensor<1,dim,dealii::VectorizedArray<double>> dist = -p;
+    const dealii::VectorizedArray<double> den = 0.05 + 2.*dist.norm_square();
+    dealii::Tensor<1,dim,dealii::VectorizedArray<double>> a = (4. / (den*den))*dist;
+
+    dealii::Tensor<1,dim,dealii::VectorizedArray<Number>> res;
+    for(int d=0; d<dim; ++d) {
+      for(int i = 0; i < dealii::VectorizedArray<Number>::n_array_elements; ++i) {
+        res[d][i] = a[d][i];
+      }
+    }
+    return res;
+
+  }
 };
 
 // Wrapper for coefficient
 template <int dim, typename Number>
-class CoefficientFun : dealii::Function<dim>
+class CoefficientFun : dealii::Function<dim,Number>
 {
 public:
-  CoefficientFun () : dealii::Function<dim>() {}
+  CoefficientFun () : dealii::Function<dim,Number>() {}
 
-  virtual Number value (const dealii::Point<dim,Number>   &p,
+  virtual Number value (const dealii::Point<dim>   &p,
                         const unsigned int  component = 0) const;
 
-  virtual dealii::VectorizedArray<Number> value (const dealii::Point<dim,dealii::VectorizedArray<Number>>   &p,
+  virtual dealii::VectorizedArray<Number> value (const dealii::Point<dim,dealii::VectorizedArray<double>>   &p,
                                                  const unsigned int  component = 0) const;
 
-  virtual void value_list (const std::vector<dealii::Point<dim,Number> > &points,
+  virtual void value_list (const std::vector<dealii::Point<dim> > &points,
                            std::vector<Number>            &values,
                            const unsigned int              component = 0) const;
 
-  virtual dealii::Tensor<1,dim,Number> gradient (const dealii::Point<dim,Number>   &p,
+  virtual dealii::Tensor<1,dim,Number> gradient (const dealii::Point<dim>   &p,
                                                  const unsigned int  component = 0) const;
 
-  virtual dealii::Tensor<1,dim,dealii::VectorizedArray<Number>> gradient (const dealii::Point<dim,dealii::VectorizedArray<Number>>   &p,
+  virtual dealii::Tensor<1,dim,dealii::VectorizedArray<Number>> gradient (const dealii::Point<dim,dealii::VectorizedArray<double>>   &p,
                                                                           const unsigned int  component = 0) const;
 };
 
 template <int dim, typename Number>
-Number CoefficientFun<dim,Number>::value (const dealii::Point<dim,Number>   &p,
+Number CoefficientFun<dim,Number>::value (const dealii::Point<dim>   &p,
                                           const unsigned int) const
 {
-  return Coefficient<dim>::value(p);
+  return Coefficient<dim,Number>::value(p);
 }
 
 template <int dim, typename Number>
-dealii::VectorizedArray<Number> CoefficientFun<dim,Number>::value (const dealii::Point<dim,dealii::VectorizedArray<Number>>   &p,
+dealii::VectorizedArray<Number> CoefficientFun<dim,Number>::value (const dealii::Point<dim,dealii::VectorizedArray<double>>   &p,
                                                                           const unsigned int) const
 {
-  return Coefficient<dim>::value(p);
+  return Coefficient<dim,Number>::value(p);
 }
 
 template <int dim, typename Number>
-void CoefficientFun<dim,Number>::value_list (const std::vector<dealii::Point<dim,Number> > &points,
+void CoefficientFun<dim,Number>::value_list (const std::vector<dealii::Point<dim> > &points,
                                              std::vector<Number>            &values,
                                              const unsigned int              component) const
 {
@@ -242,17 +250,17 @@ void CoefficientFun<dim,Number>::value_list (const std::vector<dealii::Point<dim
 
 
 template <int dim, typename Number>
-dealii::Tensor<1,dim,Number> CoefficientFun<dim,Number>::gradient (const dealii::Point<dim,Number>   &p,
+dealii::Tensor<1,dim,Number> CoefficientFun<dim,Number>::gradient (const dealii::Point<dim>   &p,
                                                                    const unsigned int) const
 {
-  return Coefficient<dim>::gradient(p);
+  return Coefficient<dim,Number>::gradient(p);
 }
 
 template <int dim, typename Number>
-dealii::Tensor<1,dim,dealii::VectorizedArray<Number>> CoefficientFun<dim,Number>::gradient (const dealii::Point<dim,dealii::VectorizedArray<Number>>   &p,
+dealii::Tensor<1,dim,dealii::VectorizedArray<Number>> CoefficientFun<dim,Number>::gradient (const dealii::Point<dim,dealii::VectorizedArray<double>>   &p,
                                                                                             const unsigned int) const
 {
-  return Coefficient<dim>::gradient(p);
+  return Coefficient<dim,Number>::gradient(p);
 }
 
 // function computing the right-hand side

@@ -45,18 +45,18 @@ double Solution<dim>::value (const Point<dim>   &p,
     Utilities::fixed_power<dim>(std::sqrt(2 * pi) * this->width);
 }
 
-dealii::Point<1,dealii::VectorizedArray<double>> vectorize_point(const dealii::Point<1,double> &p)
+dealii::Point<1,dealii::VectorizedArray<double>> vectorize_point(const dealii::Point<1> &p)
 {
   return dealii::Point<1,dealii::VectorizedArray<double>>(make_vectorized_array(p[0]));
 }
 
-dealii::Point<2,dealii::VectorizedArray<double>> vectorize_point(const dealii::Point<2,double> &p)
+dealii::Point<2,dealii::VectorizedArray<double>> vectorize_point(const dealii::Point<2> &p)
 {
   return dealii::Point<2,dealii::VectorizedArray<double>>(make_vectorized_array(p[0]),
                                                           make_vectorized_array(p[1]));
 }
 
-dealii::Point<3,dealii::VectorizedArray<double>> vectorize_point(const dealii::Point<3,double> &p)
+dealii::Point<3,dealii::VectorizedArray<double>> vectorize_point(const dealii::Point<3> &p)
 {
   return dealii::Point<3,dealii::VectorizedArray<double>>(make_vectorized_array(p[0]),
                                                           make_vectorized_array(p[1]),

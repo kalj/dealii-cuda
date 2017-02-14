@@ -113,7 +113,7 @@ evaluate_coefficient ()
     phi.reinit (cell);
     for (unsigned int q=0; q<phi.n_q_points; ++q)
       coefficient(cell,q) =
-        Coefficient<dim>::value(phi.quadrature_point(q));
+        Coefficient<dim,number>::value(phi.quadrature_point(q));
   }
 }
 
@@ -392,3 +392,13 @@ template class LaplaceOperatorCpu<3,1,double>;
 template class LaplaceOperatorCpu<3,2,double>;
 template class LaplaceOperatorCpu<3,3,double>;
 template class LaplaceOperatorCpu<3,4,double>;
+
+template class LaplaceOperatorCpu<2,1,float>;
+template class LaplaceOperatorCpu<2,2,float>;
+template class LaplaceOperatorCpu<2,3,float>;
+template class LaplaceOperatorCpu<2,4,float>;
+
+template class LaplaceOperatorCpu<3,1,float>;
+template class LaplaceOperatorCpu<3,2,float>;
+template class LaplaceOperatorCpu<3,3,float>;
+template class LaplaceOperatorCpu<3,4,float>;
