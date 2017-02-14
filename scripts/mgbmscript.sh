@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# @(#)bmscript.sh
+# @(#)mgbmscript.sh
 # @author Karl Ljungkvist <karl.ljungkvist@it.uu.se>
 
 
@@ -15,8 +15,6 @@ fi
 
 if [ "$2" == "color" ] ; then
     METHOD='color'
-elif [ "$2" == 'nothing' ] ; then
-    METHOD='nothing'
 elif [ "$2" == 'atomic' ] ; then
     METHOD='atomic'
 else
@@ -56,8 +54,6 @@ function comp()
 
     if [ -d $BDIR ] ;
     then
-        # >&2 echo "ERROR: Directory $BDIR already exists!"
-        # exit 1
         >&2 echo "Note: Directory $BDIR already exists"
 
     else
@@ -95,9 +91,8 @@ function comp()
 
         cmake -DCMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -march=native --std=c++11"  -DCMAKE_BUILD_TYPE=Release ../ 2>>compile.log >>compile.log
 
-        make bmop 2>>compile.log >>compile.log
+        make bmop_mg 2>>compile.log >>compile.log
 
-        make bmop_spm 2>>compile.log >>compile.log
     ) &
 
 }
@@ -111,7 +106,7 @@ function run()
     BDIR=build_${d}_${p}
     cd $BDIR
 
-    if [ -x ./bmop ] ; then
+    if [ -x ./bmop_mg ] ; then
 
         if [ "${d}" == 2 ] ; then
 
@@ -143,47 +138,7 @@ function run()
         minref=$(octave -q --eval "disp(max(0,${maxref}-4 ))")
 
         echo '-- mf_gpu --'
-        unbuffer ./bmop ${maxref} ${minref} | tee mf_gpu_output.log
-    fi
-
-    if [ -x ./bmop_spm ] ; then
-
-
-        if [ "${d}" == 2 ] ; then
-
-            if [ "${p}" == 1 ] ; then
-                maxref=12
-            elif [ "${p}" == 2 ] ; then
-                maxref=11
-            elif [ "${p}" == 3 ] ; then
-                maxref=10
-            elif [ "${p}" == 4 ] ; then
-                maxref=9
-                # if using hyb format:
-                # maxref=9
-            fi
-        else
-            if [ "${p}" == 1 ] ; then
-                maxref=7
-            elif [ "${p}" == 2 ] ; then
-                maxref=6
-            elif [ "${p}" == 3 ] ; then
-                maxref=5
-            elif [ "${p}" == 4 ] ; then
-                maxref=5
-            fi
-        fi
-
-        if [ "$GRID" == "ball" ] ; then
-            let maxref=maxref-1
-        fi
-
-
-        minref=$(octave -q --eval "disp(max(0,${maxref}-4 ))")
-
-
-        echo '-- spm_gpu --'
-        unbuffer ./bmop_spm ${maxref} ${minref} | tee spm_gpu_output.log
+        unbuffer ./bmop_mg ${maxref} ${minref} | tee mf_gpu_output.log
     fi
 
     cd ..
