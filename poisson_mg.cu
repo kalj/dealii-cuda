@@ -47,24 +47,22 @@
 #include "laplace_operator_gpu.h"
 
 
-// explicit instantiation of Multigrid
-#include <deal.II/multigrid/multigrid.templates.h>
-template class Multigrid< GpuVector<double> >;
-
-
-bool QUIET=false;
+typedef double number;
+typedef double level_number;
 
 using namespace dealii;
 
-typedef double number;
-typedef double level_number;
-// typedef float level_number;
-typedef GpuVector<number> VectorType;
+// explicit instantiation of Multigrid
+#include <deal.II/multigrid/multigrid.templates.h>
+template class Multigrid< GpuVector<level_number> >;
 
+
+template <typename Number>
+using VectorType = GpuVector<Number>;
 
 // coarse solver
 template<typename MatrixType, typename Number>
-class MGCoarseIterative : public MGCoarseGridBase<VectorType >
+class MGCoarseIterative : public MGCoarseGridBase<VectorType<Number> >
 {
 public:
   MGCoarseIterative() {}
@@ -75,17 +73,18 @@ public:
   }
 
   virtual void operator() (const unsigned int   level,
-                           VectorType &dst,
-                           const VectorType &src) const
+                           VectorType<Number> &dst,
+                           const VectorType<Number> &src) const
   {
     ReductionControl solver_control (1e4, 1e-50, 1e-10);
-    SolverCG<VectorType > solver_coarse (solver_control);
+    SolverCG<VectorType<Number> > solver_coarse (solver_control);
     solver_coarse.solve (*coarse_matrix, dst, src, PreconditionIdentity());
   }
 
   const MatrixType *coarse_matrix;
 };
 
+bool QUIET=false;
 
 //-------------------------------------------------------------------------
 // problem
@@ -120,8 +119,8 @@ private:
   MGConstrainedDoFs                mg_constrained_dofs;
 
   Vector<number>                   solution_host;
-  VectorType                solution_update;
-  VectorType                system_rhs;
+  VectorType<number>               solution_update;
+  VectorType<number>               system_rhs;
 
   double                           setup_time;
   ConditionalOStream               time_details;
@@ -325,7 +324,7 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   for (unsigned int level=0; level<dof_handler.get_triangulation().n_global_levels(); ++level)
     mg_interface_matrices[level].initialize(mg_matrices[level]);
 
-  MGTransferMatrixFreeGpu<dim, number > mg_transfer(mg_constrained_dofs);
+  MGTransferMatrixFreeGpu<dim, level_number > mg_transfer(mg_constrained_dofs);
   mg_transfer.build(dof_handler);
 
   setup_time += time.wall_time();
@@ -343,9 +342,9 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   time.restart();
 
 
-  typedef PreconditionChebyshev<LevelMatrixType,VectorType > SMOOTHER;
+  typedef PreconditionChebyshev<LevelMatrixType,VectorType<level_number> > SMOOTHER;
 
-  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType >
+  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType<level_number> >
     mg_smoother;
 
   MGLevelObject<typename SMOOTHER::AdditionalData> smoother_data;
@@ -365,21 +364,21 @@ void LaplaceProblem<dim,fe_degree>::run_tests ()
   mg_smoother.initialize(mg_matrices, smoother_data);
 
 
-  mg::Matrix<VectorType > mg_matrix(mg_matrices);
+  mg::Matrix<VectorType<level_number> > mg_matrix(mg_matrices);
 
-  mg::Matrix<VectorType > mg_interface(mg_interface_matrices);
+  mg::Matrix<VectorType<level_number> > mg_interface(mg_interface_matrices);
 
-  Multigrid<VectorType > mg(mg_matrix,
-                            mg_coarse,
-                            mg_transfer,
-                            mg_smoother,
-                            mg_smoother);
+  Multigrid<VectorType<level_number> > mg(mg_matrix,
+                                          mg_coarse,
+                                          mg_transfer,
+                                          mg_smoother,
+                                          mg_smoother);
 
   mg.set_edge_matrices(mg_interface, mg_interface);
 
 
-  PreconditionMG<dim, VectorType,
-                 MGTransferMatrixFreeGpu<dim,number> >
+  PreconditionMG<dim, VectorType<level_number>,
+                 MGTransferMatrixFreeGpu<dim,level_number> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
 
@@ -439,7 +438,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   for (unsigned int level=0; level<dof_handler.get_triangulation().n_global_levels(); ++level)
     mg_interface_matrices[level].initialize(mg_matrices[level]);
 
-  MGTransferMatrixFreeGpu<dim, number > mg_transfer(mg_constrained_dofs);
+  MGTransferMatrixFreeGpu<dim, level_number > mg_transfer(mg_constrained_dofs);
   mg_transfer.build(dof_handler);
 
   setup_time += time.wall_time();
@@ -448,7 +447,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   time.restart();
 
   // XXX: this should be with 'number' precision, but LevelMatrixType is with floats
-  MGCoarseIterative<LevelMatrixType,number> mg_coarse;
+  MGCoarseIterative<LevelMatrixType,level_number> mg_coarse;
   mg_coarse.initialize(mg_matrices[0]);
 
   setup_time += time.wall_time();
@@ -457,9 +456,9 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   time.restart();
 
 
-  typedef PreconditionChebyshev<LevelMatrixType,VectorType > SMOOTHER;
+  typedef PreconditionChebyshev<LevelMatrixType,VectorType<level_number> > SMOOTHER;
 
-  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType >
+  MGSmootherPrecondition<LevelMatrixType, SMOOTHER, VectorType<level_number> >
     mg_smoother;
 
   MGLevelObject<typename SMOOTHER::AdditionalData> smoother_data;
@@ -479,11 +478,11 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   mg_smoother.initialize(mg_matrices, smoother_data);
 
 
-  mg::Matrix<VectorType > mg_matrix(mg_matrices);
+  mg::Matrix<VectorType<level_number> > mg_matrix(mg_matrices);
 
-  mg::Matrix<VectorType > mg_interface(mg_interface_matrices);
+  mg::Matrix<VectorType<level_number> > mg_interface(mg_interface_matrices);
 
-  Multigrid<VectorType > mg(mg_matrix,
+  Multigrid<VectorType<level_number> > mg(mg_matrix,
                             mg_coarse,
                             mg_transfer,
                             mg_smoother,
@@ -491,8 +490,8 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
   mg.set_edge_matrices(mg_interface, mg_interface);
 
-  PreconditionMG<dim, VectorType,
-                 MGTransferMatrixFreeGpu<dim,number> >
+  PreconditionMG<dim, VectorType<level_number>,
+                 MGTransferMatrixFreeGpu<dim,level_number> >
                  preconditioner(dof_handler, mg, mg_transfer);
 
   const std::size_t multigrid_memory
@@ -506,7 +505,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   }
 
   SolverControl           solver_control (10000, 1e-12*system_rhs.l2_norm());
-  SolverCG<VectorType >              cg (solver_control);
+  SolverCG<VectorType<number> >              cg (solver_control);
   setup_time += time.wall_time();
   time_details << "Solver/prec. setup time    (CPU/wall) " << time()
                << "s/" << time.wall_time() << "s\n";
@@ -684,7 +683,8 @@ int main (int argc, char **argv)
     return 1;
   }
 
-  GrowingVectorMemory<VectorType >::release_unused_memory();
+  GrowingVectorMemory<VectorType<level_number> >::release_unused_memory();
+  GrowingVectorMemory<VectorType<number> >::release_unused_memory();
 
   return 0;
 }
