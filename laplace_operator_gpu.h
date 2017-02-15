@@ -198,7 +198,7 @@ struct LocalCoeffOp {
   {
 
     for (unsigned int q=0; q<n_q_points; ++q) {
-      coefficient[q] =  Coefficient<dim>::value(qpts[q]);
+      coefficient[q] =  Coefficient<dim,Number>::value(qpts[q]);
     }
   }
 };

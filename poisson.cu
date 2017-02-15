@@ -184,7 +184,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
   Vector<number> system_rhs_host(dof_handler.n_dofs());
   RightHandSide<dim> right_hand_side;
   std::vector<double> rhs_values(n_q_points);
-  std::vector<Tensor<1,dim> > solution_gradients(n_q_points);
+  std::vector<Tensor<1,dim,number> > solution_gradients(n_q_points);
 
   CoefficientFun<dim,number> coeff;
 

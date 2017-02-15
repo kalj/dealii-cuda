@@ -36,7 +36,7 @@ private:
 
   // host arrays
   std::vector<unsigned int> loc2glob_host;
-  std::vector<Point<dim> > quad_points_host;
+  std::vector<Point<dim,Number> > quad_points_host;
   std::vector<Number> JxW_host;
   std::vector<Number> inv_jac_host;
 
@@ -297,22 +297,33 @@ void ReinitHelper<dim,Number>::get_cell_data(const T& cell, const unsigned int c
 
   // quadrature points
   if(update_flags & update_quadrature_points) {
-    const std::vector<Point<dim> > & qpts = fe_values.get_quadrature_points();
-    memcpy(&quad_points_host[cellid*rowlength],&qpts[0],qpts_per_cell*sizeof(Point<dim>));
+    const std::vector<dealii::Point<dim> > & qpts = fe_values.get_quadrature_points();
+    std::vector<dealii::Point<dim,Number> > qpts_conv(qpts.size());
+    for(int i=0; i < qpts_conv.size(); ++i) {
+      qpts_conv[i]=dealii::Point<dim,Number> (qpts[i]);
+    }
+
+    memcpy(&quad_points_host[cellid*rowlength],qpts_conv.data(),qpts_per_cell*sizeof(Point<dim,Number>));
   }
 
   if(update_flags & update_JxW_values) {
-    const std::vector<double > & jxws_d = fe_values.get_JxW_values();
-    const unsigned int n = jxws_d.size();
+    const std::vector<double > & jxws_double = fe_values.get_JxW_values();
+    const unsigned int n = jxws_double.size();
     std::vector<Number > jxws(n);
     for(int i=0; i<n; ++i)
-      jxws[i] = Number(jxws_d[i]);
-    memcpy(&JxW_host[cellid*rowlength],&jxws[0],qpts_per_cell*sizeof(Number));
+      jxws[i] = Number(jxws_double[i]);
+    memcpy(&JxW_host[cellid*rowlength],jxws.data(),qpts_per_cell*sizeof(Number));
   }
 
   if(update_flags & update_gradients) {
     const std::vector<DerivativeForm<1,dim,dim> >& jacs = fe_values.get_inverse_jacobians();
-    memcpy(&inv_jac_host[cellid*rowlength*dim*dim],&jacs[0],qpts_per_cell*sizeof(DerivativeForm<1,dim,dim>));
+    std::vector<DerivativeForm<1,dim,dim,Number> > jacs_conv(jacs.size());
+    for(int i=0; i < jacs_conv.size(); ++i) {
+      for(int d1=0; d1<dim; ++d1)
+        for(int d2=0; d2<dim; ++d2)
+          jacs_conv[i][d1][d2] = jacs[i][d1][d2];
+    }
+    memcpy(&inv_jac_host[cellid*rowlength*dim*dim],jacs_conv.data(),qpts_per_cell*sizeof(DerivativeForm<1,dim,dim,Number>));
   }
 }
 
