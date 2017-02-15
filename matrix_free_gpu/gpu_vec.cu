@@ -60,7 +60,7 @@ GpuVector<Number>::GpuVector(const std::vector<Number>& old_cpu)
   : _size(old_cpu.size()) {
   CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,_size*sizeof(Number)));
   // const Number *cpu_data = &const_cast<Vector<Number>&>(old_cpu)[0];
-  const Number *cpu_data = &old_cpu[0];
+  const Number *cpu_data = old_cpu.data();
   CUDA_CHECK_SUCCESS(cudaMemcpy(vec_dev,cpu_data,_size*sizeof(Number),
                                 cudaMemcpyHostToDevice));
 }
@@ -88,7 +88,7 @@ GpuVector<Number>& GpuVector<Number>::operator=(const std::vector<Number>& old_c
     CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,_size*sizeof(Number)));
   }
   // const Number *cpu_data = &const_cast<Vector<Number>&>(old_cpu)[0];
-  const Number *cpu_data = &old_cpu[0];
+  const Number *cpu_data = old_cpu.data();
   CUDA_CHECK_SUCCESS(cudaMemcpy(vec_dev,cpu_data,_size*sizeof(Number),
                                 cudaMemcpyHostToDevice));
   return *this;
