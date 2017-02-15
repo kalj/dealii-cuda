@@ -289,6 +289,7 @@ void GpuVector<Number>::sadd (const Number a,
                               const GpuVector<Number> &x) {
   const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
   vec_sadd<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,x.vec_dev,a,b,_size);
+    CUDA_CHECK_LAST;
 }
 
 
@@ -298,6 +299,7 @@ template <typename Number>
 void GpuVector<Number>::scale (const GpuVector<Number> &x) {
   const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
   vec_bin_op<Number,Binop_Multiplication> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,x.vec_dev,_size);
+    CUDA_CHECK_LAST;
 }
 
 // element-wise division of vectors
@@ -305,6 +307,7 @@ template <typename Number>
 GpuVector<Number>& GpuVector<Number>::operator/= (const GpuVector<Number> &x) {
   const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
   vec_bin_op<Number,Binop_Division> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,x.vec_dev,_size);
+    CUDA_CHECK_LAST;
   return *this;
 }
 
@@ -313,6 +316,7 @@ GpuVector<Number>& GpuVector<Number>::invert()
 {
   const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
   vec_invert<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,_size);
+    CUDA_CHECK_LAST;
   return *this;
 }
 
@@ -322,6 +326,7 @@ void GpuVector<Number>::equ (const Number a,
                              const GpuVector<Number> &x) {
   const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
   vec_equ<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,x.vec_dev,a,_size);
+  CUDA_CHECK_LAST;
 }
 
 
@@ -331,6 +336,7 @@ template <typename Number>
 GpuVector<Number> & GpuVector<Number>::operator *= (const Number a) {
   const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
   vec_scale<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,a,_size);
+    CUDA_CHECK_LAST;
   return *this;
 }
 
@@ -348,6 +354,7 @@ GpuVector<Number>& GpuVector<Number>::operator=(const Number a) {
 
   const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
   vec_init<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,a,_size);
+    CUDA_CHECK_LAST;
 
   return *this;
 }
@@ -488,6 +495,7 @@ bool GpuVector<Number>::all_zero () const {
 
   const int nblocks = 1 + (_size-1) / (VR_CHUNK_SIZE*VR_BKSIZE);
   single_vec_reduction<AllZero<Number>> <<<dim3(nblocks,1),dim3(VR_BKSIZE,1)>>>(res_d,vec_dev,_size);
+    CUDA_CHECK_LAST;
 
   unsigned int res;
   CUDA_CHECK_SUCCESS(cudaMemcpy(&res,res_d,sizeof(unsigned int),
@@ -519,6 +527,7 @@ Number GpuVector<Number>::operator * (const GpuVector<Number> &v) const {
 
   dual_vec_reduction<DotProd<Number> > <<<dim3(nblocks,1),dim3(VR_BKSIZE,1)>>>(res_d,vec_dev,
                                                                                v.vec_dev,_size);
+    CUDA_CHECK_LAST;
   Number res;
   CUDA_CHECK_SUCCESS(cudaMemcpy(&res,res_d,sizeof(Number),
                                 cudaMemcpyDeviceToHost));
@@ -575,6 +584,7 @@ Number GpuVector<Number>::add_and_dot (const Number  a,
   const int nblocks = 1 + (_size-1) / (VR_CHUNK_SIZE*VR_BKSIZE);
   add_and_dot_kernel<Number> <<<dim3(nblocks,1),dim3(VR_BKSIZE,1)>>>(res_d,vec_dev,x.vec_dev,
                                                                      v.vec_dev,a,_size);
+    CUDA_CHECK_LAST;
 
   Number res;
   CUDA_CHECK_SUCCESS(cudaMemcpy(&res,res_d,sizeof(Number),
@@ -609,6 +619,7 @@ void copy_with_indices(GpuVector<Number> &dst, const GpuVector<Number> &src,
   const dim3 block_dim = dim3(blocksize);
   const dim3 grid_dim = dim3(1 + (n-1)/blocksize);
   copy_with_indices_kernel<<<grid_dim, block_dim >>>(dst.getData(),src.getDataRO(),dst_indices.getDataRO(),src_indices.getDataRO(),n);
+    CUDA_CHECK_LAST;
 }
 
 
