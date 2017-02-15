@@ -138,11 +138,11 @@ public:
    * positions of a <tt>Vector<number></tt>. In order to keep the result
    * consistent, constrained degrees of freedom are set to zero.
    */
-  template <int spacedim>
+  template <int spacedim, typename OtherNumber>
   void
   copy_to_mg (const DoFHandler<dim,spacedim>    &mg_dof,
               MGLevelObject<GpuVector<Number> > &dst,
-              const GpuVector<Number>           &src) const;
+              const GpuVector<OtherNumber>      &src) const;
 
   /**
    * Transfer from multi-level vector to normal vector.
@@ -151,10 +151,10 @@ public:
    * positions of a <tt>Vector<number></tt>. In order to keep the result
    * consistent, constrained degrees of freedom are set to zero.
    */
-  template <int spacedim>
+  template <int spacedim, typename OtherNumber>
   void
   copy_from_mg (const DoFHandler<dim,spacedim>         &mg_dof,
-                GpuVector<Number>                      &dst,
+                GpuVector<OtherNumber>                 &dst,
                 const MGLevelObject<GpuVector<Number>> &src) const;
 
   /**
@@ -162,10 +162,10 @@ public:
    *
    * Works as the previous function, but probably not for continuous elements.
    */
-  template <int spacedim>
+  template <int spacedim, typename OtherNumber>
   void
   copy_from_mg_add (const DoFHandler<dim,spacedim>         &mg_dof,
-                    GpuVector<Number>                      &dst,
+                    GpuVector<OtherNumber>                 &dst,
                     const MGLevelObject<GpuVector<Number>> &src) const;
 
 

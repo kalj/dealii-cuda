@@ -694,11 +694,11 @@ void MGTransferMatrixFreeGpu<dim,Number>::set_constrained_dofs(GpuVector<Number>
 
 
 template <int dim, typename Number>
-template <int spacedim>
+template <int spacedim, typename OtherNumber>
 void
 MGTransferMatrixFreeGpu<dim,Number>::copy_to_mg (const DoFHandler<dim,spacedim>    &mg_dof,
                                                  MGLevelObject<GpuVector<Number> > &dst,
-                                                 const GpuVector<Number>           &src) const
+                                                 const GpuVector<OtherNumber>      &src) const
 {
   AssertIndexRange(dst.max_level(), mg_dof_handler.get_triangulation().n_global_levels());
   AssertIndexRange(dst.min_level(), dst.max_level()+1);
@@ -738,10 +738,10 @@ MGTransferMatrixFreeGpu<dim,Number>::copy_to_mg (const DoFHandler<dim,spacedim> 
 
 
 template <int dim, typename Number>
-template <int spacedim>
+template <int spacedim, typename OtherNumber>
 void
 MGTransferMatrixFreeGpu<dim,Number>::copy_from_mg (const DoFHandler<dim,spacedim>         &mg_dof,
-                                                   GpuVector<Number>                      &dst,
+                                                   GpuVector<OtherNumber>                 &dst,
                                                    const MGLevelObject<GpuVector<Number>> &src) const
 {
   AssertIndexRange(src.max_level(), mg_dof_handler.get_triangulation().n_global_levels());
@@ -767,10 +767,10 @@ MGTransferMatrixFreeGpu<dim,Number>::copy_from_mg (const DoFHandler<dim,spacedim
 
 
 template <int dim, typename Number>
-template <int spacedim>
+template <int spacedim, typename OtherNumber>
 void
 MGTransferMatrixFreeGpu<dim,Number>::copy_from_mg_add (const DoFHandler<dim,spacedim>         &mg_dof,
-                                                       GpuVector<Number>                      &dst,
+                                                       GpuVector<OtherNumber>                 &dst,
                                                        const MGLevelObject<GpuVector<Number>> &src) const
 {
   ExcNotImplemented();
@@ -801,25 +801,35 @@ MGTransferMatrixFreeGpu<dim,Number>::memory_consumption() const
 // #include "mg_transfer_matrix_free.inst"
 
 template class MGTransferMatrixFreeGpu<2,double>;
+template class MGTransferMatrixFreeGpu<2,float>;
 template class MGTransferMatrixFreeGpu<3,double>;
+template class MGTransferMatrixFreeGpu<3,float>;
 
-template void
-MGTransferMatrixFreeGpu<2,double>::copy_to_mg (const DoFHandler<2>&,
-                                               MGLevelObject<GpuVector<double> >&,
-                                               const GpuVector<double>&) const;
-template void
-MGTransferMatrixFreeGpu<3,double>::copy_to_mg (const DoFHandler<3>&,
-                                               MGLevelObject<GpuVector<double> >&,
-                                               const GpuVector<double>&) const;
+#define INSTANTIATE_COPY_TO_MG(dim,number_type,vec_number_type) template void \
+  MGTransferMatrixFreeGpu<dim,number_type>::copy_to_mg (const DoFHandler<dim>&, \
+                                                        MGLevelObject<GpuVector<number_type> >&, \
+                                                        const GpuVector<vec_number_type>&) const
 
-template void
-MGTransferMatrixFreeGpu<2,double>::copy_from_mg (const DoFHandler<2>&,
-                                                 GpuVector<double>&,
-                                                 const MGLevelObject<GpuVector<double> >&) const;
-template void
-MGTransferMatrixFreeGpu<3,double>::copy_from_mg (const DoFHandler<3>&,
-                                                 GpuVector<double>&,
-                                                 const MGLevelObject<GpuVector<double> >&) const;
+INSTANTIATE_COPY_TO_MG(2,double,double);
+INSTANTIATE_COPY_TO_MG(2,float,float);
+INSTANTIATE_COPY_TO_MG(2,float,double);
+
+INSTANTIATE_COPY_TO_MG(3,double,double);
+INSTANTIATE_COPY_TO_MG(3,float,float);
+INSTANTIATE_COPY_TO_MG(3,float,double);
+
+
+#define INSTANTIATE_COPY_FROM_MG(dim,number_type,vec_number_type) template void \
+  MGTransferMatrixFreeGpu<dim,number_type>::copy_from_mg (const DoFHandler<dim>&, \
+                                                          GpuVector<vec_number_type>&, \
+                                                          const MGLevelObject<GpuVector<number_type> >&) const
+INSTANTIATE_COPY_FROM_MG(2,double,double);
+INSTANTIATE_COPY_FROM_MG(2,float,float);
+INSTANTIATE_COPY_FROM_MG(2,float,double);
+
+INSTANTIATE_COPY_FROM_MG(3,double,double);
+INSTANTIATE_COPY_FROM_MG(3,float,float);
+INSTANTIATE_COPY_FROM_MG(3,float,double);
 
 
 //=============================================================================
@@ -847,6 +857,11 @@ template class MGTransferBase< GpuVector<double> >;
 template class MGMatrixBase<GpuVector<double> >;
 template class MGSmootherBase< GpuVector<double> >;
 template class MGCoarseGridBase< GpuVector<double> >;
+
+template class MGTransferBase< GpuVector<float> >;
+template class MGMatrixBase<GpuVector<float> >;
+template class MGSmootherBase< GpuVector<float> >;
+template class MGCoarseGridBase< GpuVector<float> >;
 
 
 //=============================================================================
