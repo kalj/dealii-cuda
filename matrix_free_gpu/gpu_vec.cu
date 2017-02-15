@@ -17,6 +17,12 @@ template class GrowingVectorMemory<GpuVector<double> >;
 template class VectorMemory<GpuVector<float> >;
 template class GrowingVectorMemory<GpuVector<float> >;
 
+#define BKSIZE_ELEMWISE_OP 512
+#define CHUNKSIZE_ELEMWISE_OP 8
+
+template <typename DstNumber, typename SrcNumber, typename ScalarNumber>
+__global__ void vec_equ(DstNumber *v1, const SrcNumber *v2, const ScalarNumber a, const int N);
+
 
 //=============================================================================
 // Constructors / assignment
@@ -103,6 +109,31 @@ GpuVector<Number>& GpuVector<Number>::operator=(const GpuVector<Number>& old) {
   }
   CUDA_CHECK_SUCCESS(cudaMemcpy(vec_dev,old.vec_dev,_size*sizeof(Number),
                                 cudaMemcpyDeviceToDevice));
+  return *this;
+}
+
+template <typename Number>
+template <typename OtherNumber>
+GpuVector<Number>::GpuVector(const GpuVector<OtherNumber>& old)
+  : _size(old.size()) {
+  CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,_size*sizeof(Number)));
+  const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
+  vec_equ<Number,OtherNumber,double> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev, old.vec_dev,1.0,_size);
+  CUDA_CHECK_LAST;
+}
+
+// same for assignment
+template <typename Number>
+template <typename OtherNumber>
+GpuVector<Number>& GpuVector<Number>::operator=(const GpuVector<OtherNumber>& old) {
+  if(_size != old._size) {
+    if(vec_dev != NULL) CUDA_CHECK_SUCCESS(cudaFree(vec_dev));
+    _size = old._size;
+    CUDA_CHECK_SUCCESS(cudaMalloc(&vec_dev,_size*sizeof(Number)));
+  }
+  const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
+  vec_equ<Number,OtherNumber,double> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev, old.vec_dev,1.0,_size);
+    CUDA_CHECK_LAST;
   return *this;
 }
 
@@ -193,9 +224,6 @@ GpuVector<Number>::DevRef GpuVector<Number>::operator()(const size_t i)
 // Element wise operations (mult. with scalar, vector addition)
 //=============================================================================
 
-#define BKSIZE_ELEMWISE_OP 512
-#define CHUNKSIZE_ELEMWISE_OP 8
-
 
 template <typename Number>
 __global__ void vec_sadd(Number *v1, const Number *v2, const Number a, const Number b, const int N)
@@ -232,8 +260,8 @@ __global__ void vec_bin_op(Number *v1, const Number *v2, const int N)
 }
 
 
-template <typename Number>
-__global__ void vec_equ(Number *v1, const Number *v2, const Number a, const int N)
+template <typename DstNumber, typename SrcNumber, typename ScalarNumber>
+__global__ void vec_equ(DstNumber *v1, const SrcNumber *v2, const ScalarNumber a, const int N)
 {
   const int idx_base = threadIdx.x + blockIdx.x*(blockDim.x*CHUNKSIZE_ELEMWISE_OP);
 
@@ -325,7 +353,7 @@ template <typename Number>
 void GpuVector<Number>::equ (const Number a,
                              const GpuVector<Number> &x) {
   const int nblocks = 1 + (_size-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
-  vec_equ<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,x.vec_dev,a,_size);
+  vec_equ<Number,Number,Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec_dev,x.vec_dev,a,_size);
   CUDA_CHECK_LAST;
 }
 
@@ -600,8 +628,9 @@ Number GpuVector<Number>::add_and_dot (const Number  a,
 //=============================================================================
 // non-class functions
 //=============================================================================
-template <typename Number, typename IndexT>
-__global__ void copy_with_indices_kernel(Number *dst, const Number *src, const IndexT *dst_indices, const IndexT *src_indices, int n)
+template <typename DstNumber, typename SrcNumber, typename IndexT>
+__global__ void copy_with_indices_kernel(DstNumber *dst, const SrcNumber *src, const IndexT *dst_indices,
+                                         const IndexT *src_indices, int n)
 {
   const int i = threadIdx.x + blockIdx.x*blockDim.x;
   if(i<n) {
@@ -609,9 +638,8 @@ __global__ void copy_with_indices_kernel(Number *dst, const Number *src, const I
   }
 }
 
-
-template <typename Number, typename IndexT>
-void copy_with_indices(GpuVector<Number> &dst, const GpuVector<Number> &src,
+template <typename DstNumber, typename SrcNumber, typename IndexT>
+void copy_with_indices(GpuVector<DstNumber> &dst, const GpuVector<SrcNumber> &src,
                        const GpuList<IndexT> &dst_indices, const GpuList<IndexT> &src_indices)
 {
   const int n = dst_indices.size();
@@ -630,12 +658,22 @@ void copy_with_indices(GpuVector<Number> &dst, const GpuVector<Number> &src,
 template class GpuVector<double>;
 template class GpuVector<float>;
 
-template void copy_with_indices<double> (GpuVector<double> &, const GpuVector<double> &,
-                                         const GpuList<int> &, const GpuList<int> &);
-template void copy_with_indices<double> (GpuVector<double> &, const GpuVector<double> &,
-                                         const GpuList<unsigned int> &, const GpuList<unsigned int> &);
+template GpuVector<float>::GpuVector(const GpuVector<double>&);
+template GpuVector<double>::GpuVector(const GpuVector<float>&);
+template GpuVector<float>& GpuVector<float>::operator=(const GpuVector<double>&);
+template GpuVector<double>& GpuVector<double>::operator=(const GpuVector<float>&);
 
-template void copy_with_indices<float> (GpuVector<float> &, const GpuVector<float> &,
-                                         const GpuList<int> &, const GpuList<int> &);
-template void copy_with_indices<float> (GpuVector<float> &, const GpuVector<float> &,
-                                         const GpuList<unsigned int> &, const GpuList<unsigned int> &);
+#define INSTANTIATE_COPY_WITH_INDICES(dst_type,src_type,idx_type)       \
+  template void copy_with_indices<dst_type,src_type,idx_type> (GpuVector<dst_type> &, const GpuVector<src_type> &, \
+                                                               const GpuList<idx_type> &, const GpuList<idx_type> &)
+INSTANTIATE_COPY_WITH_INDICES(double,double,int);
+INSTANTIATE_COPY_WITH_INDICES(double,double,unsigned int);
+
+INSTANTIATE_COPY_WITH_INDICES(float,float,int);
+INSTANTIATE_COPY_WITH_INDICES(float,float,unsigned int);
+
+INSTANTIATE_COPY_WITH_INDICES(double,float,int);
+INSTANTIATE_COPY_WITH_INDICES(double,float,unsigned int);
+
+INSTANTIATE_COPY_WITH_INDICES(float,double,int);
+INSTANTIATE_COPY_WITH_INDICES(float,double,unsigned int);

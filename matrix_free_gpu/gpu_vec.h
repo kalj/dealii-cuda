@@ -46,6 +46,10 @@ public:
   // copy constructor
   GpuVector(const GpuVector<Number>& old);
 
+  // copy constructor from vector based on other number type
+  template <typename OtherNumber>
+  GpuVector(const GpuVector<OtherNumber>& old);
+
   // copy constructor from CPU object
   GpuVector(const Vector<Number>& old_cpu);
 
@@ -55,6 +59,10 @@ public:
   GpuVector<Number>& operator=(const GpuVector<Number>& old);
   GpuVector<Number>& operator=(const Vector<Number>& old_cpu);
   GpuVector<Number>& operator=(const std::vector<Number>& old_cpu);
+  template <typename OtherNumber>
+  GpuVector<Number>& operator=(const GpuVector<OtherNumber>& old);
+
+  template <typename OtherNumber> friend class GpuVector;
 
   ~GpuVector();
 
@@ -168,9 +176,8 @@ public:
 };
 
 
-
-template <typename Number, typename IndexT>
-void copy_with_indices(GpuVector<Number> &dst, const GpuVector<Number> &src,
+template <typename DstNumber, typename SrcNumber, typename IndexT>
+void copy_with_indices(GpuVector<DstNumber> &dst, const GpuVector<SrcNumber> &src,
                        const GpuList<IndexT> &dst_indices, const GpuList<IndexT> &src_indices);
 
 
