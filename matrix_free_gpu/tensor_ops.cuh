@@ -37,9 +37,9 @@ struct TensorOpsShmem {
         const unsigned int shapeidx = phi_tr ? (q+k*n) : (k+q*n);
 
         if(with_gradients)
-          t += shape_gradient[shapeidx] * (inplace ? dst[k] : src[k]);
+          t += ConstantMemoryWrapper<Number>::shape_gradient(shapeidx) * (inplace ? dst[k] : src[k]);
         else
-          t += shape_values[shapeidx] * (inplace ? dst[k] : src[k]);
+          t += ConstantMemoryWrapper<Number>::shape_values(shapeidx) * (inplace ? dst[k] : src[k]);
       }
 
       if(inplace) __syncthreads();
@@ -64,9 +64,9 @@ struct TensorOpsShmem {
           : (i + n*k);
 
         if(with_gradients)
-          t += shape_gradient[shapeidx] * (inplace ? dst[srcidx] : src[srcidx]);
+          t += ConstantMemoryWrapper<Number>::shape_gradient(shapeidx) * (inplace ? dst[srcidx] : src[srcidx]);
         else
-          t += shape_values[shapeidx] * (inplace ? dst[srcidx] : src[srcidx]);
+          t += ConstantMemoryWrapper<Number>::shape_values(shapeidx) * (inplace ? dst[srcidx] : src[srcidx]);
       }
 
 
@@ -97,9 +97,9 @@ struct TensorOpsShmem {
           : (i + n*(j + n*k));
 
         if(with_gradients)
-          t += shape_gradient[shapeidx] * (inplace ? dst[srcidx] : src[srcidx]);
+          t += ConstantMemoryWrapper<Number>::shape_gradient(shapeidx) * (inplace ? dst[srcidx] : src[srcidx]);
         else
-          t += shape_values[shapeidx] * (inplace ? dst[srcidx] : src[srcidx]);
+          t += ConstantMemoryWrapper<Number>::shape_values(shapeidx) * (inplace ? dst[srcidx] : src[srcidx]);
       }
 
       if(inplace) __syncthreads();

@@ -42,9 +42,40 @@ template <int dim, typename Number>
 class ReinitHelper;
 
 
-__constant__ double shape_values[(MAX_ELEM_DEGREE+1)*(MAX_ELEM_DEGREE+1)];
-__constant__ double shape_gradient[(MAX_ELEM_DEGREE+1)*(MAX_ELEM_DEGREE+1)];
+__constant__ double shape_values_double[(MAX_ELEM_DEGREE+1)*(MAX_ELEM_DEGREE+1)];
+__constant__ double shape_gradient_double[(MAX_ELEM_DEGREE+1)*(MAX_ELEM_DEGREE+1)];
+__constant__ float shape_values_float[(MAX_ELEM_DEGREE+1)*(MAX_ELEM_DEGREE+1)];
+__constant__ float shape_gradient_float[(MAX_ELEM_DEGREE+1)*(MAX_ELEM_DEGREE+1)];
 
+
+template <typename Number>
+struct ConstantMemoryWrapper;
+
+template <>
+struct ConstantMemoryWrapper<double>
+{
+  __device__ static inline double shape_values(int i) { return shape_values_double[i]; }
+  __device__ static inline double shape_gradient(int i) { return shape_gradient_double[i]; }
+  static void copy_to_shape_values(const double *vals, const unsigned int size) {
+    CUDA_CHECK_SUCCESS(cudaMemcpyToSymbol(shape_values_double,vals,size));
+  }
+  static void copy_to_shape_gradient(const double *vals, const unsigned int size) {
+    CUDA_CHECK_SUCCESS(cudaMemcpyToSymbol(shape_gradient_double,vals,size));
+  }
+};
+
+template <>
+struct ConstantMemoryWrapper<float>
+{
+  __device__ static inline float shape_values(int i) { return shape_values_float[i]; }
+  __device__ static inline float shape_gradient(int i) { return shape_gradient_float[i]; }
+  static void copy_to_shape_values(const float *vals, const unsigned int size) {
+    CUDA_CHECK_SUCCESS(cudaMemcpyToSymbol(shape_values_float,vals,size));
+  }
+  static void copy_to_shape_gradient(const float *vals, const unsigned int size) {
+    CUDA_CHECK_SUCCESS(cudaMemcpyToSymbol(shape_gradient_float,vals,size));
+  }
+};
 
 template <int dim, typename Number>
 class MatrixFreeGpu {
