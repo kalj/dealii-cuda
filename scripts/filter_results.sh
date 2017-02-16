@@ -1,7 +1,7 @@
 #!/bin/bash
 
 for m in cube ball  ; do
-    for h in nohn hn ; do
+    for h in nohn hn x ; do
 
         for ad in adaptive noadaptive ; do
 
