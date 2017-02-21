@@ -148,7 +148,7 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
   // assemble matrix
   SparseMatrix<number> system_matrix_host(sparsity_pattern);
 
-  CoefficientFun<dim> coeff;
+  CoefficientFun<dim,number> coeff;
 
   const QGauss<dim>  quadrature_formula(fe.degree+1);
   FEValues<dim> fe_values (fe, quadrature_formula,
