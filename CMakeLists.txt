@@ -107,3 +107,6 @@ TARGET_LINK_LIBRARIES(bmop-cpu ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(bmop_mg_cpu bmop_mg_cpu.cc laplace_operator_cpu.cc poisson_common.cc)
 TARGET_LINK_LIBRARIES(bmop_mg_cpu  ${LIBRARIES} )
+
+CUDA_ADD_EXECUTABLE(print-meshes print-meshes.cc )
+TARGET_LINK_LIBRARIES(print-meshes ${LIBRARIES})
