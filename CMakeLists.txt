@@ -52,7 +52,9 @@ SET(MATRIX_FREE_GPU_SOURCES
   matrix_free_gpu/mg_transfer_matrix_free_gpu.cu
   matrix_free_gpu/cuda_sparse_matrix.cu
   matrix_free_gpu/coloring.cc
-  matrix_free_gpu/constraint_handler_gpu.cu)
+  matrix_free_gpu/constraint_handler_gpu.cu
+  matrix_free_gpu/gpu_partitioner.cc
+  )
 
 CUDA_ADD_LIBRARY(matrix_free_lib ${MATRIX_FREE_GPU_SOURCES})
 
@@ -75,6 +77,9 @@ TARGET_LINK_LIBRARIES(test_dot matrix_free_lib ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_laplace_op test_laplace_op.cu poisson_common.cc laplace_operator_cpu.cc)
 TARGET_LINK_LIBRARIES(test_laplace_op matrix_free_lib ${LIBRARIES})
+
+CUDA_ADD_EXECUTABLE(test_partitioner test_partitioner.cc)
+TARGET_LINK_LIBRARIES(test_partitioner matrix_free_lib ${LIBRARIES})
 
 # solvers
 
