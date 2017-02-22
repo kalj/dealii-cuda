@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# @(#)bmscript.sh
+# @(#)bmscript-cpu.sh
 # @author Karl Ljungkvist <karl.ljungkvist@it.uu.se>
 
 
@@ -95,7 +95,7 @@ function run()
             let maxref=maxref-1
         fi
 
-        minref=$(octave -q --eval "disp(max(0,${maxref}-4 ))")
+        minref=$(echo "${maxref}" | awk '{ m=$1-4; if(m<0) m=0; print m;}')
 
         unbuffer ./bmop-cpu ${maxref} ${minref} | tee cpu_output.log
     fi

@@ -135,7 +135,7 @@ function run()
             let maxref=maxref-1
         fi
 
-        minref=$(octave -q --eval "disp(max(0,${maxref}-4 ))")
+        minref=$(echo "${maxref}" | awk '{ m=$1-4; if(m<0) m=0; print m;}')
 
         echo '-- mf_gpu --'
         unbuffer ./bmop_mg ${maxref} ${minref} | tee mf_gpu_output.log
