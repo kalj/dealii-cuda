@@ -21,6 +21,138 @@
 
 namespace CUDAWrappers
 {
+
+  // generic functions
+  template <typename Number>
+  void hyb2csr(const cusparseHandle_t handle, const cusparseMatDescr_t descr,
+               const cusparseHybMat_t hyb,
+               Number *mat_val, int *mat_ptr, int *mat_ind);
+
+  template <typename Number>
+  void csr2hyb(const cusparseHandle_t handle, unsigned int n_rows, unsigned int n_cols,
+               const cusparseMatDescr_t descr,
+               const Number *mat_val, const int *mat_ptr, const int *mat_ind,
+               cusparseHybMat_t hyb);
+
+  template <typename Number>
+  void csrmv(const cusparseHandle_t handle,
+             int m, int n, int nnz, const Number          *alpha,
+             const cusparseMatDescr_t descrA,
+             const Number          *csrValA,
+             const int *csrRowPtrA, const int *csrColIndA,
+             const Number          *x, const Number          *beta,
+             Number          *y);
+
+  template <typename Number>
+  void hybmv(const cusparseHandle_t handle,
+             const Number          *alpha,
+             const cusparseMatDescr_t descrA,
+             const cusparseHybMat_t hybA, const Number          *x,
+             const Number          *beta, Number          *y);
+
+
+
+  // implementations
+
+  template <>
+  void hybmv(const cusparseHandle_t handle,
+             const double          *alpha,
+             const cusparseMatDescr_t descrA,
+             const cusparseHybMat_t hybA, const double          *x,
+             const double          *beta, double          *y)
+  {
+        CUSPARSE_CHECK_SUCCESS(cusparseDhybmv(handle,CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                          alpha, descrA, hybA, x, beta, y),
+                           "CUSPARSE: hybmv failed");
+  }
+
+  template <>
+  void hybmv(const cusparseHandle_t handle,
+             const float          *alpha,
+             const cusparseMatDescr_t descrA,
+             const cusparseHybMat_t hybA, const float          *x,
+             const float          *beta, float          *y)
+  {
+        CUSPARSE_CHECK_SUCCESS(cusparseShybmv(handle,CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                          alpha, descrA, hybA, x, beta, y),
+                           "CUSPARSE: hybmv failed");
+  }
+
+  template <>
+  void csrmv(const cusparseHandle_t handle,
+             int m, int n, int nnz, const double          *alpha,
+             const cusparseMatDescr_t descrA,
+             const double          *csrValA,
+             const int *csrRowPtrA, const int *csrColIndA,
+             const double          *x, const double          *beta,
+             double          *y)
+  {
+    CUSPARSE_CHECK_SUCCESS(cusparseDcsrmv(handle,CUSPARSE_OPERATION_NON_TRANSPOSE, m, n, nnz,
+                                          alpha, descrA, csrValA, csrRowPtrA, csrColIndA,
+                                          x, beta, y),
+                           "CUSPARSE: csrmv failed");
+  }
+
+  template <>
+  void csrmv(const cusparseHandle_t handle,
+             int m, int n, int nnz, const float          *alpha,
+             const cusparseMatDescr_t descrA,
+             const float          *csrValA,
+             const int *csrRowPtrA, const int *csrColIndA,
+             const float          *x, const float          *beta,
+             float          *y)
+  {
+    CUSPARSE_CHECK_SUCCESS(cusparseScsrmv(handle,CUSPARSE_OPERATION_NON_TRANSPOSE, m, n, nnz,
+                                          alpha, descrA, csrValA, csrRowPtrA, csrColIndA,
+                                          x, beta, y),
+                           "CUSPARSE: csrmv failed");
+  }
+
+
+  template <>
+  void hyb2csr(const cusparseHandle_t handle, const cusparseMatDescr_t descr,
+               const cusparseHybMat_t hyb,
+               double *mat_val, int *mat_ptr, int *mat_ind)
+  {
+    CUSPARSE_CHECK_SUCCESS(cusparseDhyb2csr(handle,descr,hyb,mat_val,mat_ptr,
+                                            mat_ind),
+                           "CUSPARSE: Failed converting matrix format from hyb to csr");
+  }
+
+  template <>
+  void hyb2csr(const cusparseHandle_t handle, const cusparseMatDescr_t descr,
+               const cusparseHybMat_t hyb,
+               float *mat_val, int *mat_ptr, int *mat_ind)
+  {
+    CUSPARSE_CHECK_SUCCESS(cusparseShyb2csr(handle,descr,hyb,mat_val,mat_ptr,
+                                            mat_ind),
+                           "CUSPARSE: Failed converting matrix format from hyb to csr");
+  }
+
+
+  template <>
+  void csr2hyb(const cusparseHandle_t handle, unsigned int n_rows, unsigned int n_cols,
+               const cusparseMatDescr_t descr,
+               const double *mat_val, const int *mat_ptr, const int *mat_ind,
+               cusparseHybMat_t hyb)
+  {
+    CUSPARSE_CHECK_SUCCESS(cusparseDcsr2hyb(handle,n_rows,n_cols,descr,mat_val,mat_ptr,
+                                            mat_ind,hyb,0,CUSPARSE_HYB_PARTITION_AUTO),
+                           "CUSPARSE: Failed converting matrix to hyb format");
+  }
+
+  template <>
+  void csr2hyb(const cusparseHandle_t handle, unsigned int n_rows, unsigned int n_cols,
+               const cusparseMatDescr_t descr,
+               const float *mat_val, const int *mat_ptr, const int *mat_ind,
+               cusparseHybMat_t hyb)
+  {
+    CUSPARSE_CHECK_SUCCESS(cusparseScsr2hyb(handle,n_rows,n_cols,descr,mat_val,mat_ptr,
+                                            mat_ind,hyb,0,CUSPARSE_HYB_PARTITION_AUTO),
+                           "CUSPARSE: Failed converting matrix to hyb format");
+  }
+
+
   template<typename Number>
   SparseMatrix<Number>::SparseMatrix()
     : initialized(false),n_cols(0), n_rows(0), nnz(0)
@@ -142,10 +274,8 @@ namespace CUDAWrappers
 #ifdef USE_HYB_MATRIX
 
     // convert to hyb format
-    CUSPARSE_CHECK_SUCCESS(cusparseDcsr2hyb(handle,n_rows,n_cols,descr,mat_val,mat_ptr,
-                                            mat_ind,hyb,0,CUSPARSE_HYB_PARTITION_AUTO),
-                           "CUSPARSE: Failed converting matrix to hyb format");
-
+    csr2hyb(handle,n_rows,n_cols,descr,mat_val,mat_ptr,
+            mat_ind,hyb,0,CUSPARSE_HYB_PARTITION_AUTO);
 
     CudaAssert(cudaFree(mat_val));
     CudaAssert(cudaFree(mat_ind));
@@ -255,9 +385,8 @@ namespace CUDAWrappers
 #ifdef USE_HYB_MATRIX
 
     // convert to hyb format
-    CUSPARSE_CHECK_SUCCESS(cusparseDcsr2hyb(handle,n_rows,n_cols,descr,mat_val,mat_ptr,
-                                            mat_ind,hyb,0,CUSPARSE_HYB_PARTITION_AUTO),
-                           "CUSPARSE: Failed converting matrix format from csr to hyb");
+    csr2hyb(handle,n_rows,n_cols,descr,mat_val,mat_ptr,
+            mat_ind,hyb,0,CUSPARSE_HYB_PARTITION_AUTO);
 
 
     CudaAssert(cudaFree(mat_val));
@@ -291,14 +420,10 @@ namespace CUDAWrappers
     const Number *vec_buf = src.getDataRO();
 
 #ifdef USE_HYB_MATRIX
-    CUSPARSE_CHECK_SUCCESS(cusparseDhybmv(handle,CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                          &one, descr, hyb, vec_buf, &zero, dst_buf),
-                           "CUSPARSE: hybmv failed");
+    hybmv(handle,&one, descr, hyb, vec_buf, &zero, dst_buf);
 #else
-    CUSPARSE_CHECK_SUCCESS(cusparseDcsrmv(handle,CUSPARSE_OPERATION_NON_TRANSPOSE, n_rows, n_cols, nnz,
-                                          &one, descr, mat_val, mat_ptr, mat_ind,
-                                          vec_buf, &zero, dst_buf),
-                           "CUSPARSE: csrmv failed");
+    csrmv(handle, n_rows, n_cols, nnz, &one, descr, mat_val, mat_ptr, mat_ind,
+          vec_buf, &zero, dst_buf);
 #endif
 
   }
@@ -315,9 +440,7 @@ namespace CUDAWrappers
 
 
     // convert to hyb format
-    CUSPARSE_CHECK_SUCCESS(cusparseDhyb2csr(handle,descr,hyb,mat_val,mat_ptr,
-                                            mat_ind),
-                           "CUSPARSE: Failed converting matrix format from hyb to csr");
+    hyb2csr(handle,descr,hyb,mat_val,mat_ptr, mat_ind);
 
 #endif
 
@@ -361,6 +484,9 @@ namespace CUDAWrappers
 
 template
 class CUDAWrappers::SparseMatrix<double>;
+
+template
+class CUDAWrappers::SparseMatrix<float>;
 
 // DEAL_II_NAMESPACE_CLOSE
 
