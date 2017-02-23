@@ -39,6 +39,10 @@ elif [ "$4" != "nohn" ] ; then
     HANGING=$ADAPTIVE
 fi
 
+if [ "$6" == "float" ] ; then
+    USE_FLOATS=1
+fi
+
 
 
 if [ "$ADAPTIVE" == 1 ] && [ "$HANGING" != 1 ] ; then
@@ -92,6 +96,9 @@ function comp()
             CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DADAPTIVE_GRID"
         fi
 
+        if [ "$USE_FLOATS" == '1' ] ; then
+            CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DBMOP_USE_FLOATS"
+        fi
 
         cmake -DCMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -march=native --std=c++11"  -DCMAKE_BUILD_TYPE=Release ../ 2>>compile.log >>compile.log
 

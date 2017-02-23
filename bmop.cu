@@ -56,7 +56,12 @@ const unsigned int dimension = DIMENSION;
 const unsigned int dimension = 3;
 #endif
 
+
+#ifdef BMOP_USE_FLOATS
+typedef float number;
+#else
 typedef double number;
+#endif
 
 //-------------------------------------------------------------------------
 // problem
