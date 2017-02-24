@@ -16,10 +16,12 @@
 
 #include "gpu_partitioner.h"
 
-namespace dealii {
+
+namespace dealii
+{
 
   template <typename Number>
-  class MulitGpuVector : public Subscriptor {
+  class MultiGpuVector : public Subscriptor {
   public:
     typedef types::global_dof_index size_type;
     typedef Number value_type;
@@ -58,30 +60,30 @@ namespace dealii {
     bool vector_is_compressed;
   public:
     // constructors et al.
-    MulitGpuVector()
+    MultiGpuVector()
       : global_size(0),
         vector_is_ghosted(false),
         vector_is_compressed(true) {}
 
-    MulitGpuVector(const std::shared_ptr<const GpuPartitioner> &partitioner_in);
+    MultiGpuVector(const std::shared_ptr<const GpuPartitioner> &partitioner_in);
 
     // copy constructor
-    MulitGpuVector(const MulitGpuVector<Number>& old);
+    MultiGpuVector(const MultiGpuVector<Number>& old);
 
     // copy constructor from vector based on other number type
     template <typename OtherNumber>
-    MulitGpuVector(const MulitGpuVector<OtherNumber>& old);
+    MultiGpuVector(const MultiGpuVector<OtherNumber>& old);
 
     // same for assignment
-    MulitGpuVector<Number>& operator=(const MulitGpuVector<Number>& old);
-    MulitGpuVector<Number>& operator=(const Vector<Number>& old_cpu);
-    MulitGpuVector<Number>& operator=(const std::vector<Number>& old_cpu);
+    MultiGpuVector<Number>& operator=(const MultiGpuVector<Number>& old);
+    MultiGpuVector<Number>& operator=(const Vector<Number>& old_cpu);
+    MultiGpuVector<Number>& operator=(const std::vector<Number>& old_cpu);
     template <typename OtherNumber>
-    MulitGpuVector<Number>& operator=(const MulitGpuVector<OtherNumber>& old);
+    MultiGpuVector<Number>& operator=(const MultiGpuVector<OtherNumber>& old);
 
-    template <typename OtherNumber> friend class MulitGpuVector;
+    template <typename OtherNumber> friend class MultiGpuVector;
 
-    ~MulitGpuVector();
+    ~MultiGpuVector();
 
     unsigned int size() const { return global_size;}
 
@@ -100,7 +102,7 @@ namespace dealii {
     // const Number *getDataRO() const { return vec_dev; }
 
     // initialize with single value
-    MulitGpuVector& operator=(const Number n);
+    MultiGpuVector& operator=(const Number n);
 
     // necessary for deal.ii but shouldn't be used!
     DevRef operator()(const size_t i);
@@ -116,53 +118,53 @@ namespace dealii {
     // clear vector. note
     // that the second argument must have
     // a default value equal to false
-    void reinit (const MulitGpuVector<Number>&,
+    void reinit (const MultiGpuVector<Number>&,
                  bool leave_elements_uninitialized = false);
 
     // scalar product
-    Number operator * (const MulitGpuVector<Number> &v) const;
+    Number operator * (const MultiGpuVector<Number> &v) const;
     // addition of vectors
-    void add (const MulitGpuVector<Number> &V) { sadd(1,1,V); }
+    void add (const MultiGpuVector<Number> &V) { sadd(1,1,V); }
     // scaled addition of vectors (this = this + a*V)
     void add (const Number a,
-              const MulitGpuVector<Number> &V) { sadd(1,a,V); }
+              const MultiGpuVector<Number> &V) { sadd(1,a,V); }
     // scaled addition of vectors (this = s*this + V)
     void sadd (const Number s,
-               const MulitGpuVector<Number> &V) { sadd(s,1,V); }
+               const MultiGpuVector<Number> &V) { sadd(s,1,V); }
     // scaled addition of vectors (this = s*this + a*V)
     void sadd (const Number s,
                const Number a,
-               const MulitGpuVector<Number> &V);
+               const MultiGpuVector<Number> &V);
 
 
     // addition of vectors
-    MulitGpuVector<Number>& operator+=(const MulitGpuVector<Number> &x) { sadd(1,1,x); return (*this); }
+    MultiGpuVector<Number>& operator+=(const MultiGpuVector<Number> &x) { sadd(1,1,x); return (*this); }
 
     // subtraction of vectors
-    MulitGpuVector<Number>& operator-=(const MulitGpuVector<Number> &x) { sadd(1,-1,x); return (*this); }
+    MultiGpuVector<Number>& operator-=(const MultiGpuVector<Number> &x) { sadd(1,-1,x); return (*this); }
 
     // Combined scaled addition of vector x into
     // the current object and subsequent inner
     // product of the current object with v
     Number add_and_dot (const Number  a,
-                        const MulitGpuVector<Number> &x,
-                        const MulitGpuVector<Number> &v);
+                        const MultiGpuVector<Number> &x,
+                        const MultiGpuVector<Number> &v);
 
     // element-wise multiplication
-    void scale(const MulitGpuVector<Number> &v);
+    void scale(const MultiGpuVector<Number> &v);
 
     // element-wise division
-    MulitGpuVector<Number>& operator/=(const MulitGpuVector<Number> &x);
+    MultiGpuVector<Number>& operator/=(const MultiGpuVector<Number> &x);
 
     // element-wise inversion
-    MulitGpuVector<Number>& invert();
+    MultiGpuVector<Number>& invert();
 
     // scaled assignment of a vector
     void equ (const Number a,
-              const MulitGpuVector<Number> &x);
+              const MultiGpuVector<Number> &x);
     // scale the elements of the vector
     // by a fixed value
-    MulitGpuVector<Number> & operator *= (const Number a);
+    MultiGpuVector<Number> & operator *= (const Number a);
 
     // return the l2 norm of the vector
     Number l2_norm () const;
@@ -181,7 +183,7 @@ namespace dealii {
       toVector().print(out,precision,scientific,across);
     }
 
-    void swap(MulitGpuVector<Number> &other);
+    void swap(MultiGpuVector<Number> &other);
  // {
  //      Number * tmp_vec = vec_dev;
  //      unsigned int tmp_size = _size;
@@ -198,6 +200,7 @@ namespace dealii {
 
     void update_ghost_values() const;
   };
+
 }
 
 #endif /* _MULTI_GPU_VEC_H */

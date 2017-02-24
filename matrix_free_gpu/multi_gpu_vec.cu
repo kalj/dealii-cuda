@@ -22,10 +22,10 @@
 using namespace dealii;
 
 // #include <deal.II/lac/vector_memory.templates.h>
-// template class VectorMemory<MulitGpuVector<double> >;
-// template class GrowingVectorMemory<MulitGpuVector<double> >;
-// template class VectorMemory<MulitGpuVector<float> >;
-// template class GrowingVectorMemory<MulitGpuVector<float> >;
+// template class VectorMemory<MultiGpuVector<double> >;
+// template class GrowingVectorMemory<MultiGpuVector<double> >;
+// template class VectorMemory<MultiGpuVector<float> >;
+// template class GrowingVectorMemory<MultiGpuVector<float> >;
 
 template <typename DstNumber, typename SrcNumber, typename ScalarNumber>
 __global__ void vec_equ(DstNumber *v1, const SrcNumber *v2, const ScalarNumber a, const int N);
@@ -36,7 +36,7 @@ __global__ void vec_equ(DstNumber *v1, const SrcNumber *v2, const ScalarNumber a
 //=============================================================================
 
 template <typename Number>
-MulitGpuVector<Number>::DevRef& MulitGpuVector<Number>::DevRef::operator=(const Number value)
+MultiGpuVector<Number>::DevRef& MultiGpuVector<Number>::DevRef::operator=(const Number value)
 {
   CUDA_CHECK_SUCCESS(cudaSetDevice(owning_device));
   CUDA_CHECK_SUCCESS(cudaMemcpy(ptr,&value,sizeof(Number),
@@ -45,7 +45,7 @@ MulitGpuVector<Number>::DevRef& MulitGpuVector<Number>::DevRef::operator=(const 
 }
 
 template <typename Number>
-MulitGpuVector<Number>::MulitGpuVector(const std::shared_ptr<const GpuPartitioner> &partitioner_in)
+MultiGpuVector<Number>::MultiGpuVector(const std::shared_ptr<const GpuPartitioner> &partitioner_in)
   : vec(partitioner_in->n_partitions()),
     import_data(partitioner_in->n_partitions()),
     import_indices(partitioner_in->n_partitions()),
@@ -69,7 +69,7 @@ MulitGpuVector<Number>::MulitGpuVector(const std::shared_ptr<const GpuPartitione
 }
 
 template <typename Number>
-MulitGpuVector<Number>::MulitGpuVector(const MulitGpuVector<Number>& old)
+MultiGpuVector<Number>::MultiGpuVector(const MultiGpuVector<Number>& old)
   : vec(old.partitioner->n_partitions()),
     import_data(old.partitioner->n_partitions()),
     import_indices(old.partitioner->n_partitions()),
@@ -96,7 +96,7 @@ MulitGpuVector<Number>::MulitGpuVector(const MulitGpuVector<Number>& old)
 }
 
 template <typename Number>
-MulitGpuVector<Number>& MulitGpuVector<Number>::operator=(const Vector<Number>& old_cpu)
+MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const Vector<Number>& old_cpu)
 {
   AssertDimension(global_size, old_cpu.size());
 
@@ -117,7 +117,7 @@ MulitGpuVector<Number>& MulitGpuVector<Number>::operator=(const Vector<Number>& 
 }
 
 template <typename Number>
-MulitGpuVector<Number>& MulitGpuVector<Number>::operator=(const std::vector<Number>& old_cpu)
+MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const std::vector<Number>& old_cpu)
 {
   AssertDimension(global_size, old_cpu.size());
 
@@ -138,7 +138,7 @@ MulitGpuVector<Number>& MulitGpuVector<Number>::operator=(const std::vector<Numb
 }
 
 template <typename Number>
-MulitGpuVector<Number>& MulitGpuVector<Number>::operator=(const MulitGpuVector<Number>& old)
+MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const MultiGpuVector<Number>& old)
 {
   AssertDimension(global_size, old.size());
   // FIXME: also check for compatible partitioners
@@ -161,7 +161,7 @@ MulitGpuVector<Number>& MulitGpuVector<Number>::operator=(const MulitGpuVector<N
 // copy constructor from vector based on other number type
 template <typename Number>
 template <typename OtherNumber>
-MulitGpuVector<Number>::MulitGpuVector(const MulitGpuVector<OtherNumber>& old)
+MultiGpuVector<Number>::MultiGpuVector(const MultiGpuVector<OtherNumber>& old)
   : vec(old.partitioner->n_partitions()),
     import_data(old.partitioner->n_partitions()),
     import_indices(old.partitioner->n_partitions()),
@@ -196,7 +196,7 @@ MulitGpuVector<Number>::MulitGpuVector(const MulitGpuVector<OtherNumber>& old)
 // same for assignment
 template <typename Number>
 template <typename OtherNumber>
-MulitGpuVector<Number>& MulitGpuVector<Number>::operator=(const MulitGpuVector<OtherNumber>& old)
+MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const MultiGpuVector<OtherNumber>& old)
 {
   AssertDimension(global_size, old.size());
   // FIXME: also check for compatible partitioners
@@ -218,7 +218,7 @@ MulitGpuVector<Number>& MulitGpuVector<Number>::operator=(const MulitGpuVector<O
 
 
 template <typename Number>
-MulitGpuVector<Number>::~MulitGpuVector()
+MultiGpuVector<Number>::~MultiGpuVector()
 {
   for(int i=0; i<partitioner->n_partitions(); ++i) {
     CUDA_CHECK_SUCCESS(cudaSetDevice(i));
@@ -230,7 +230,7 @@ MulitGpuVector<Number>::~MulitGpuVector()
 }
 
 template <typename Number>
-void MulitGpuVector<Number>::copyToHost(Vector<Number>& dst) const
+void MultiGpuVector<Number>::copyToHost(Vector<Number>& dst) const
 {
   AssertDimension(global_size, dst.size());
 
@@ -249,7 +249,7 @@ void MulitGpuVector<Number>::copyToHost(Vector<Number>& dst) const
 
 // initialize with a partitioner
 template <typename Number>
-void MulitGpuVector<Number>::reinit (const std::shared_ptr<const GpuPartitioner> &partitioner_in)
+void MultiGpuVector<Number>::reinit (const std::shared_ptr<const GpuPartitioner> &partitioner_in)
 {
   // if we already have same or equivalent partitioner, just return
   if(partitioner->is_compatible(*partitioner_in))
@@ -296,7 +296,7 @@ void MulitGpuVector<Number>::reinit (const std::shared_ptr<const GpuPartitioner>
 // vector. note that the second argument must have a default value equal to
 // false
 template <typename Number>
-void MulitGpuVector<Number>::reinit (const MulitGpuVector<Number>& other,
+void MultiGpuVector<Number>::reinit (const MultiGpuVector<Number>& other,
                                 bool leave_elements_uninitialized)
 {
   // if we already have same or equivalent partitioner, just return
@@ -347,7 +347,7 @@ void MulitGpuVector<Number>::reinit (const MulitGpuVector<Number>& other,
 
 
 template <typename Number>
-Number MulitGpuVector<Number>::operator()(const size_t i) const
+Number MultiGpuVector<Number>::operator()(const size_t i) const
 {
   // FIXME: probably check for compressed
 
@@ -364,13 +364,13 @@ Number MulitGpuVector<Number>::operator()(const size_t i) const
 
 // necessary for deal.ii but shouldn't be used!
 template <typename Number>
-MulitGpuVector<Number>::DevRef MulitGpuVector<Number>::operator()(const size_t i)
+MultiGpuVector<Number>::DevRef MultiGpuVector<Number>::operator()(const size_t i)
 {
   // FIXME: probably check for compressed / invalidate ghosted state
 
   const int owning_device = partitioner->dof_owner(i);
   const int local_index = partitioner->local_index(i);
-  return MulitGpuVector<Number>::DevRef(vec[owning_device]+local_index,owning_device);
+  return MultiGpuVector<Number>::DevRef(vec[owning_device]+local_index,owning_device);
 }
 
 
@@ -466,9 +466,9 @@ __global__ void vec_invert(Number *v, const int N)
 
 // scaled addition of vectors
 template <typename Number>
-void MulitGpuVector<Number>::sadd (const Number a,
+void MultiGpuVector<Number>::sadd (const Number a,
                               const Number b,
-                              const MulitGpuVector<Number> &x)
+                              const MultiGpuVector<Number> &x)
 {
 
   AssertDimension(global_size, x.size());
@@ -487,7 +487,7 @@ void MulitGpuVector<Number>::sadd (const Number a,
 
 // element-wise multiplication of vectors
 template <typename Number>
-void MulitGpuVector<Number>::scale (const MulitGpuVector<Number> &x)
+void MultiGpuVector<Number>::scale (const MultiGpuVector<Number> &x)
 {
   AssertDimension(global_size, x.size());
 
@@ -502,7 +502,7 @@ void MulitGpuVector<Number>::scale (const MulitGpuVector<Number> &x)
 
 // element-wise division of vectors
 template <typename Number>
-MulitGpuVector<Number>& MulitGpuVector<Number>::operator/= (const MulitGpuVector<Number> &x)
+MultiGpuVector<Number>& MultiGpuVector<Number>::operator/= (const MultiGpuVector<Number> &x)
 {
   AssertDimension(global_size, x.size());
 
@@ -517,7 +517,7 @@ MulitGpuVector<Number>& MulitGpuVector<Number>::operator/= (const MulitGpuVector
 }
 
 template <typename Number>
-MulitGpuVector<Number>& MulitGpuVector<Number>::invert()
+MultiGpuVector<Number>& MultiGpuVector<Number>::invert()
 {
   for(int i=0; i<partitioner->n_partitions(); ++i) {
     CUDA_CHECK_SUCCESS(cudaSetDevice(i));
@@ -530,8 +530,8 @@ MulitGpuVector<Number>& MulitGpuVector<Number>::invert()
 
 // scaled assignment of a vector
 template <typename Number>
-void MulitGpuVector<Number>::equ (const Number a,
-                             const MulitGpuVector<Number> &x)
+void MultiGpuVector<Number>::equ (const Number a,
+                             const MultiGpuVector<Number> &x)
 {
   AssertDimension(global_size, x.size());
 
@@ -548,7 +548,7 @@ void MulitGpuVector<Number>::equ (const Number a,
 // scale the elements of the vector
 // by a fixed value
 template <typename Number>
-MulitGpuVector<Number> & MulitGpuVector<Number>::operator *= (const Number a)
+MultiGpuVector<Number> & MultiGpuVector<Number>::operator *= (const Number a)
 {
   for(int i=0; i<partitioner->n_partitions(); ++i) {
     CUDA_CHECK_SUCCESS(cudaSetDevice(i));
@@ -562,14 +562,14 @@ MulitGpuVector<Number> & MulitGpuVector<Number>::operator *= (const Number a)
 
 // return the l2 norm of the vector
 template <typename Number>
-Number MulitGpuVector<Number>::l2_norm () const {
+Number MultiGpuVector<Number>::l2_norm () const {
   return sqrt((*this)*(*this));
 }
 
 
 // initialize vector with value
 template <typename Number>
-MulitGpuVector<Number>& MulitGpuVector<Number>::operator=(const Number a)
+MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const Number a)
 {
   for(int i=0; i<partitioner->n_partitions(); ++i) {
     CUDA_CHECK_SUCCESS(cudaSetDevice(i));
@@ -707,7 +707,7 @@ struct AllZero {
 };
 
 template <typename Number>
-bool MulitGpuVector<Number>::all_zero () const
+bool MultiGpuVector<Number>::all_zero () const
 {
   std::vector<unsigned int *> res_d(partitioner->n_partitions());
 
@@ -753,7 +753,7 @@ struct DotProd {
 };
 
 template <typename Number>
-Number MulitGpuVector<Number>::operator * (const MulitGpuVector<Number> &v) const
+Number MultiGpuVector<Number>::operator * (const MultiGpuVector<Number> &v) const
 {
   AssertDimension(global_size, v.size());
   // FIXME: also check for compatible partitioners
@@ -827,9 +827,9 @@ __global__ void add_and_dot_kernel(Number *res, Number *v1, const Number *v2,
 }
 
 template <typename Number>
-Number MulitGpuVector<Number>::add_and_dot (const Number  a,
-                                       const MulitGpuVector<Number> &x,
-                                       const MulitGpuVector<Number> &v)
+Number MultiGpuVector<Number>::add_and_dot (const Number  a,
+                                       const MultiGpuVector<Number> &x,
+                                       const MultiGpuVector<Number> &v)
 {
   AssertDimension(global_size, x.size());
   AssertDimension(global_size, v.size());
@@ -880,7 +880,7 @@ __global__ void add_with_indices_kernel(Number *dst,
 
 
 template <typename Number>
-void MulitGpuVector<Number>::compress(VectorOperation::values operation)
+void MultiGpuVector<Number>::compress(VectorOperation::values operation)
 {
   // Assert(!vector_is_compressed,);
 
@@ -924,7 +924,7 @@ void MulitGpuVector<Number>::compress(VectorOperation::values operation)
 }
 
 template <typename Number>
-void MulitGpuVector<Number>::update_ghost_values () const
+void MultiGpuVector<Number>::update_ghost_values () const
 {
 
   // Assert(vector_is_compressed);
@@ -996,16 +996,16 @@ __global__ void add_with_indices_kernel(Number *dst,
 // instantiate templates
 //=============================================================================
 
-template class MulitGpuVector<double>;
-template class MulitGpuVector<float>;
+template class MultiGpuVector<double>;
+template class MultiGpuVector<float>;
 
-template MulitGpuVector<float>::MulitGpuVector(const MulitGpuVector<double>&);
-template MulitGpuVector<double>::MulitGpuVector(const MulitGpuVector<float>&);
-template MulitGpuVector<float>& MulitGpuVector<float>::operator=(const MulitGpuVector<double>&);
-template MulitGpuVector<double>& MulitGpuVector<double>::operator=(const MulitGpuVector<float>&);
+template MultiGpuVector<float>::MultiGpuVector(const MultiGpuVector<double>&);
+template MultiGpuVector<double>::MultiGpuVector(const MultiGpuVector<float>&);
+template MultiGpuVector<float>& MultiGpuVector<float>::operator=(const MultiGpuVector<double>&);
+template MultiGpuVector<double>& MultiGpuVector<double>::operator=(const MultiGpuVector<float>&);
 
 // #define INSTANTIATE_COPY_WITH_INDICES(dst_type,src_type,idx_type)       \
-//   template void copy_with_indices<dst_type,src_type,idx_type> (MulitGpuVector<dst_type> &, const MulitGpuVector<src_type> &, \
+//   template void copy_with_indices<dst_type,src_type,idx_type> (MultiGpuVector<dst_type> &, const MultiGpuVector<src_type> &, \
 //                                                                const GpuList<idx_type> &, const GpuList<idx_type> &)
 // INSTANTIATE_COPY_WITH_INDICES(double,double,int);
 // INSTANTIATE_COPY_WITH_INDICES(double,double,unsigned int);
