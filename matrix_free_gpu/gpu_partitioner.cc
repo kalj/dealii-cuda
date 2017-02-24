@@ -7,20 +7,19 @@
 
 using namespace dealii;
 
-template <int dim>
-GpuPartitioner<dim>::GpuPartitioner()
+GpuPartitioner::GpuPartitioner()
 {}
 
 template <int dim>
-GpuPartitioner<dim>::GpuPartitioner(const DoFHandler<dim> &dof_handler,
+GpuPartitioner::GpuPartitioner(const DoFHandler<dim> &dof_handler,
                                     unsigned int num_partitions)
 {
   reinit(dof_handler,num_partitions);
 }
 
 template <int dim>
-void GpuPartitioner<dim>::reinit(const DoFHandler<dim> &dof_handler,
-                                 unsigned int num_partitions)
+void GpuPartitioner::reinit(const DoFHandler<dim> &dof_handler,
+                            unsigned int num_partitions)
 {
   n_parts = num_partitions;
 
@@ -29,39 +28,30 @@ void GpuPartitioner<dim>::reinit(const DoFHandler<dim> &dof_handler,
   n_local_dofs.resize(n_parts);
   n_local_cells.resize(n_parts);
   ghost_dof_indices.resize(n_parts);
-  n_local_dofs_with_ghosted.resize(n_parts);
-  active_begin_iterators.resize(n_parts);
-  end_iterators.resize(n_parts);
 
-  n_ghost_dofs.resize(n_parts);
+  n_ghost_dofs_matrix.resize(n_parts);
 
-  n_global_cells = dof_handler.get_triangulation().n_active_cells();
-  n_global_dofs = dof_handler.n_dofs();
+  for(int i = 0; i < n_parts; ++i)
+    n_ghost_dofs_matrix[i].resize(n_parts);
+
+  n_import_inds.resize(n_parts);
+  import_inds.resize(n_parts);
+
+  n_cells_tot = dof_handler.get_triangulation().n_active_cells();
+  n_dofs_tot = dof_handler.n_dofs();
 
 
   //---------------------------------------------------------------------------
   // set up cell partitions
   //---------------------------------------------------------------------------
-  unsigned int chunk_size = 1 + (n_global_cells-1)/n_parts;
+  unsigned int chunk_size = 1 + (n_cells_tot-1)/n_parts;
 
   for(int i = 0; i < n_parts; ++i) {
     local_cell_offsets[i] = i*chunk_size;
     n_local_cells[i] = std::min(chunk_size,
-                                n_global_cells-local_cell_offsets[i]);
+                                n_cells_tot-local_cell_offsets[i]);
 
-    active_begin_iterators[i] = typename DoFHandler<dim>::active_cell_iterator (&dof_handler.get_triangulation(),
-                                                                                dof_handler.get_triangulation().n_levels()-1,
-                                                                                local_cell_offsets[i],
-                                                                                &dof_handler);
-    if(i<n_parts-1) {
-      end_iterators[i] = typename DoFHandler<dim>::cell_iterator (&dof_handler.get_triangulation(),
-                                                                  dof_handler.get_triangulation().n_levels()-1,
-                                                                  local_cell_offsets[i]+n_local_cells[i],
-                                                                  &dof_handler);
-    }
   }
-
-  end_iterators[n_parts-1] = dof_handler.end();
 
   //---------------------------------------------------------------------------
   // set up resulting dof partitions
@@ -89,7 +79,7 @@ void GpuPartitioner<dim>::reinit(const DoFHandler<dim> &dof_handler,
     n_local_dofs[i-1] = local_dof_offsets[i] - local_dof_offsets[i-1];
   }
 
-  n_local_dofs[n_parts-1] = n_global_dofs - local_dof_offsets[n_parts-1];
+  n_local_dofs[n_parts-1] = n_dofs_tot - local_dof_offsets[n_parts-1];
 
 
   //---------------------------------------------------------------------------
@@ -99,8 +89,9 @@ void GpuPartitioner<dim>::reinit(const DoFHandler<dim> &dof_handler,
   for(int i = 0; i < n_parts; ++i) {
     gathered.clear();
 
-    for(typename DoFHandler<dim>::active_cell_iterator cell=active_begin_iterators[i];
-        cell!=end_iterators[i]; ++cell) {
+    for(typename DoFHandler<dim>::active_cell_iterator cell=this->begin_active(dof_handler,i);
+        cell!=this->end(dof_handler,i);
+        ++cell) {
 
       cell->get_dof_indices(dof_indices);
       for(auto idx : dof_indices) {
@@ -112,50 +103,80 @@ void GpuPartitioner<dim>::reinit(const DoFHandler<dim> &dof_handler,
 
     // all are gathered now
     ghost_dof_indices[i] = std::vector<unsigned int>(gathered.begin(),gathered.end());
-    // n_local_dofs_with_ghosted[i] = n_local_dofs[i] + ghost_dof_indices[i].size();
-    n_ghost_dofs[i] = ghost_dof_indices[i].size();
+
+    // find size of regions belonging to each partition:
+    // initialize to zero
+    for(int j=0; j<n_parts; ++j)
+      n_ghost_dofs_matrix[i][j]=0;
+
+    // count ghost dofs from other
+    for(auto g : ghost_dof_indices[i]) {
+      unsigned int owner = dof_owner(g);
+      n_ghost_dofs_matrix[i][owner]++;
+    }
+
+  }
+
+  // set up lists of which dofs in a partition are ghosted in other partitions
+  // these are indices in local index space. note that there may be duplicates
+  // as several other partitions may have the same dof as ghost
+  for(int owner = 0; owner < n_parts; ++owner) {
+
+    // set up size
+    n_import_inds[owner] = 0;
+    for(int other = 0; other < n_parts; ++other)
+      n_import_inds[owner] += n_ghost_dofs_matrix[other][owner];
+
+    import_inds[owner].resize(n_import_inds[owner]);
+
+    for(int other = 0; other < n_parts; ++other) {
+
+      for(int i=0; i<n_ghost_dofs_matrix[other][owner]; ++i)
+        import_inds[owner][this->import_data_offset(owner,other)+i]
+          = ghost_dof_indices[other][this->ghost_dofs_offset(other,owner)+i]
+          - local_dof_offsets[owner];
+    }
   }
 
 }
 
-template <int dim>
-unsigned int GpuPartitioner<dim>::n_partitions() const
+unsigned int GpuPartitioner::n_partitions() const
 {
   return n_parts;
 }
 
-template <int dim>
-const std::vector<unsigned int>& GpuPartitioner<dim>::local_sizes() const
+unsigned int GpuPartitioner::n_dofs(unsigned int part) const
 {
-  return n_local_dofs;
+  return n_local_dofs[part];
 }
 
-// template <int dim>
-// const std::vector<unsigned int>& GpuPartitioner<dim>::ghosted_sizes() const
-// {
-//   return n_local_dofs_with_ghosted;
-// }
 
-template <int dim>
-unsigned int GpuPartitioner<dim>::global_size() const
+unsigned int GpuPartitioner::n_global_dofs() const
 {
-  return n_global_dofs;
+  return n_dofs_tot;
 }
 
-template <int dim>
-unsigned int GpuPartitioner<dim>::local_dof_offset(unsigned int part) const
+unsigned int GpuPartitioner::n_cells(unsigned int part) const
+{
+  return n_local_cells[part];
+}
+
+unsigned int GpuPartitioner::n_global_cells() const
+{
+  return n_cells_tot;
+}
+
+unsigned int GpuPartitioner::local_dof_offset(unsigned int part) const
 {
   return local_dof_offsets[part];
 }
 
-template <int dim>
-bool GpuPartitioner<dim>::is_compatible(const GpuPartitioner &other) const
+bool GpuPartitioner::is_compatible(const GpuPartitioner &other) const
 {
-
+  return true;
 }
 
-template <int dim>
-unsigned int GpuPartitioner<dim>::dof_owner(unsigned int global_index) const
+unsigned int GpuPartitioner::dof_owner(unsigned int global_index) const
 {
   unsigned int owner = 0;
   while (owner < n_parts && local_dof_offsets[owner+1] <= global_index) {
@@ -165,8 +186,7 @@ unsigned int GpuPartitioner<dim>::dof_owner(unsigned int global_index) const
   return owner;
 }
 
-template <int dim>
-unsigned int GpuPartitioner<dim>::cell_owner(unsigned int cell_index) const
+unsigned int GpuPartitioner::cell_owner(unsigned int cell_index) const
 {
   unsigned int owner = 0;
   while (owner < n_parts && local_cell_offsets[owner+1] <= cell_index) {
@@ -176,23 +196,110 @@ unsigned int GpuPartitioner<dim>::cell_owner(unsigned int cell_index) const
   return owner;
 }
 
-template <int dim>
-unsigned int GpuPartitioner<dim>::local_index(unsigned int global_index) const
+unsigned int GpuPartitioner::local_index(unsigned int global_index) const
 {
   return global_index - local_dof_offsets[dof_owner(global_index)];
 }
 
 template <int dim>
-typename DoFHandler<dim>::active_cell_iterator GpuPartitioner<dim>::begin_active(unsigned part)
+typename DoFHandler<dim>::active_cell_iterator GpuPartitioner::begin_active(const DoFHandler<dim> &dof_handler,
+                                                                            unsigned int part) const
 {
-  return active_begin_iterators[part];
+  return typename DoFHandler<dim>::active_cell_iterator (&dof_handler.get_triangulation(),
+                                                         dof_handler.get_triangulation().n_levels()-1,
+                                                         local_cell_offsets[part],
+                                                         &dof_handler);
 }
 
 template <int dim>
-typename DoFHandler<dim>::cell_iterator GpuPartitioner<dim>::end(unsigned part)
+typename DoFHandler<dim>::cell_iterator GpuPartitioner::end(const DoFHandler<dim> &dof_handler,
+                                                            unsigned int part) const
 {
-  return end_iterators[part];
+  if(part<n_parts-1)
+    return typename DoFHandler<dim>::cell_iterator (&dof_handler.get_triangulation(),
+                                                    dof_handler.get_triangulation().n_levels()-1,
+                                                    local_cell_offsets[part]+n_local_cells[part],
+                                                    &dof_handler);
+  else
+    return dof_handler.end();
 }
 
-template class GpuPartitioner<2>;
-template class GpuPartitioner<3>;
+const std::vector<unsigned int>& GpuPartitioner::import_indices(unsigned int owner) const
+{
+  return import_inds[owner];
+}
+
+unsigned int GpuPartitioner::n_import_indices(unsigned int owner) const
+{
+  return n_import_inds[owner];
+}
+
+unsigned int GpuPartitioner::import_data_offset(unsigned int owner,
+                                                unsigned int with_ghost) const
+{
+  // Assert(owner != with_ghost); // ghosts with oneself don't make sense
+  unsigned int offset=0;
+  for(int i = 0; i < with_ghost; ++i)
+    offset += n_ghost_dofs_matrix[i][owner];
+
+  return offset;
+}
+
+unsigned int GpuPartitioner::ghost_dofs_offset(unsigned int with_ghost,
+                                               unsigned int owner) const
+{
+  // Assert(owner != with_ghost); // ghosts with oneself don't make sense
+  unsigned int offset=0;
+  for(int i = 0; i < owner; ++i)
+    offset += n_ghost_dofs_matrix[with_ghost][i];
+
+  return offset;
+}
+
+unsigned int GpuPartitioner::n_ghost_dofs(unsigned int with_ghost,
+                                          unsigned int owner) const
+{
+  // Assert(owner != with_ghost); // ghosts with oneself don't make sense
+
+  return n_ghost_dofs_matrix[with_ghost][owner];
+}
+
+unsigned int GpuPartitioner::n_ghost_dofs_tot(unsigned int with_ghost) const
+{
+  unsigned int n=0;
+  for(int i = 0; i < n_parts; ++i)
+    n += n_ghost_dofs_matrix[with_ghost][i];
+  return n;
+}
+
+const std::vector<unsigned int>& GpuPartitioner::ghost_indices(unsigned int with_ghost) const
+{
+  return ghost_dof_indices[with_ghost];
+}
+
+
+template GpuPartitioner::GpuPartitioner(const DoFHandler<2> &dof_handler,
+                                        unsigned int num_partitions);
+template
+void GpuPartitioner::reinit(const DoFHandler<2> &dof_handler,
+                            unsigned int num_partitions);
+template
+typename DoFHandler<2>::active_cell_iterator GpuPartitioner::begin_active(const DoFHandler<2> &dof_handler,
+                                                                          unsigned int partition) const;
+template
+typename DoFHandler<2>::cell_iterator GpuPartitioner::end(const DoFHandler<2> &dof_handler,
+                                                          unsigned int partition) const;
+
+
+template GpuPartitioner::GpuPartitioner(const DoFHandler<3> &dof_handler,
+                                        unsigned int num_partitions);
+template
+void GpuPartitioner::reinit(const DoFHandler<3> &dof_handler,
+                            unsigned int num_partitions);
+
+template
+typename DoFHandler<3>::active_cell_iterator GpuPartitioner::begin_active(const DoFHandler<3> &dof_handler,
+                                                                          unsigned int partition) const;
+template
+typename DoFHandler<3>::cell_iterator GpuPartitioner::end(const DoFHandler<3> &dof_handler,
+                                                          unsigned int partition) const;

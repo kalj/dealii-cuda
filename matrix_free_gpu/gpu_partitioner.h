@@ -10,23 +10,26 @@
 
 namespace dealii
 {
-  template <int dim>
   class GpuPartitioner
   {
   public:
     GpuPartitioner();
 
+    template <int dim>
     GpuPartitioner(const DoFHandler<dim> &dof_handler, unsigned int n_partitions);
 
+    template <int dim>
     void reinit(const DoFHandler<dim> &dof_handler, unsigned int n_partitions);
 
     unsigned int n_partitions() const;
 
-    const std::vector<unsigned int>& local_sizes() const;
+    unsigned int n_global_dofs() const;
 
-    const std::vector<unsigned int>& ghosted_sizes() const;
+    unsigned int n_dofs(unsigned int part) const;
 
-    unsigned int global_size() const;
+    unsigned int n_global_cells() const;
+
+    unsigned int n_cells(unsigned int part) const;
 
     unsigned int local_dof_offset(unsigned int part) const;
 
@@ -38,37 +41,55 @@ namespace dealii
 
     unsigned int local_index(unsigned int global_index) const;
 
-    typename DoFHandler<dim>::active_cell_iterator begin_active(unsigned partition);
+    const std::vector<unsigned int>& import_indices(unsigned int owner) const;
 
-    typename DoFHandler<dim>::cell_iterator end(unsigned partition);
+    const std::vector<unsigned int>& ghost_indices(unsigned int with_ghost) const;
 
-  // private:
-    unsigned int n_parts;
+    unsigned int n_import_indices(unsigned int owner) const;
 
-    unsigned int n_global_dofs;
+    unsigned int import_data_offset(unsigned int owner,
+                                    unsigned int with_ghost) const;
 
-    unsigned int n_global_cells;
+    unsigned int ghost_dofs_offset(unsigned int with_ghost,
+                                   unsigned int owner) const;
 
-    std::vector<unsigned int> local_dof_offsets;
+    unsigned int n_ghost_dofs(unsigned int with_ghost,
+                              unsigned int owner) const;
 
-    std::vector<unsigned int> local_cell_offsets;
+    unsigned int n_ghost_dofs_tot(unsigned int with_ghost) const;
 
-    std::vector<unsigned int> n_local_dofs;
+    template <int dim>
+    typename DoFHandler<dim>::active_cell_iterator begin_active(const DoFHandler<dim> &dof_handler,
+                                                                unsigned int partition) const;
 
-    std::vector<unsigned int> n_local_cells;
+    template <int dim>
+    typename DoFHandler<dim>::cell_iterator end(const DoFHandler<dim> &dof_handler,
+                                                unsigned int partition) const;
 
-    std::vector<std::vector<unsigned int> > ghost_dof_indices;
 
-    std::vector<unsigned int> n_local_dofs_with_ghosted;
+  private:
 
-    std::vector<unsigned int> n_ghost_dofs;
+    // partitions
+    unsigned int                             n_parts;
 
-    std::vector<typename DoFHandler<dim>::active_cell_iterator> active_begin_iterators;
+    // related to cells
+    unsigned int                             n_cells_tot;
+    std::vector<unsigned int>                local_cell_offsets;
+    std::vector<unsigned int>                n_local_cells;
 
-    std::vector<typename DoFHandler<dim>::cell_iterator> end_iterators;
+    // related to dofs
+    unsigned int                             n_dofs_tot;
+    std::vector<unsigned int>                local_dof_offsets;
+    std::vector<unsigned int>                n_local_dofs;
+
+    // related do ghost dofs
+    std::vector<std::vector<unsigned int> >  ghost_dof_indices;
+    std::vector<std::vector<unsigned int> >  n_ghost_dofs_matrix;
+
+    std::vector<std::vector<unsigned int> >  import_inds;
+    std::vector<unsigned int >               n_import_inds;
 
   };
-
 }
 
 #endif /* _GPU_PARTITIONER_H */
