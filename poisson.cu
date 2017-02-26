@@ -34,7 +34,7 @@
 #include <sstream>
 
 #include "matrix_free_gpu/defs.h"
-#include "matrix_free_gpu/gpu_vec.h"
+#include "matrix_free_gpu/multi_gpu_vec.h"
 #include "matrix_free_gpu/cuda_utils.cuh"
 
 #include "laplace_operator_gpu.h"
@@ -58,24 +58,27 @@ public:
   void run (unsigned int min_cycle, unsigned int max_cycle);
 
 private:
-  void setup_system ();
+  void setup_system (unsigned int n_partitions);
   void assemble_system ();
   void solve ();
   void output_results (const unsigned int cycle) const;
 
-  Triangulation<dim>               triangulation;
-  FE_Q<dim>                        fe;
-  DoFHandler<dim>                  dof_handler;
-  ConstraintMatrix                 constraints;
+  Triangulation<dim>                    triangulation;
+  FE_Q<dim>                             fe;
+  DoFHandler<dim>                       dof_handler;
+  std::shared_ptr<GpuPartitioner>       partitioner;
+  std::vector<ConstraintMatrix>         partition_constraints;
+  ConstraintMatrix                      global_constraints;
 
-  typedef GpuVector<number>                           VectorType;
+  typedef MultiGpuVector<number>                         VectorType;
+  // typedef GpuVector<number>                           VectorType;
   typedef LaplaceOperatorGpu<dim,fe_degree,number> SystemMatrixType;
 
   SystemMatrixType                 system_matrix;
 
   Vector<number>                   solution_host;
-  VectorType                solution_update;
-  VectorType                system_rhs;
+  VectorType                       solution_update;
+  VectorType                       system_rhs;
 
   double                           setup_time;
   ConditionalOStream               time_details;
@@ -88,14 +91,15 @@ LaplaceProblem<dim,fe_degree>::LaplaceProblem ()
   :
   fe (fe_degree),
   dof_handler (triangulation),
-  time_details (std::cout, false)
+  time_details (std::cout, false),
+  partitioner(new GpuPartitioner)
 {}
 
 
 
 
 template <int dim, int fe_degree>
-void LaplaceProblem<dim,fe_degree>::setup_system ()
+void LaplaceProblem<dim,fe_degree>::setup_system (unsigned int n_partitions)
 {
   Timer time;
   time.start ();
@@ -104,6 +108,8 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
   system_matrix.clear();
 
   dof_handler.distribute_dofs (fe);
+
+  partitioner->reinit(dof_handler,n_partitions);
 
   if(!QUIET) {
     std::cout << "Number of degrees of freedom: "
@@ -115,20 +121,52 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
               << std::endl;
   }
 
-  constraints.clear();
+  // set up global constraints
+
+  global_constraints.clear();
+
+  DoFTools::make_hanging_node_constraints(dof_handler,
+                                          global_constraints);
+
   VectorTools::interpolate_boundary_values (dof_handler,
                                             0,
                                             ZeroFunction<dim>(),
-                                            constraints);
-  DoFTools::make_hanging_node_constraints(dof_handler,constraints);
-  constraints.close();
+                                            global_constraints);
+
+  DoFTools::make_hanging_node_constraints(dof_handler,global_constraints);
+  global_constraints.close();
+
+
+  // set up per-partition constraints
+  partition_constraints.resize(partitioner->n_partitions());
+
+  for(int i=0; i<partitioner->n_partitions(); ++i) {
+
+    IndexSet locally_relevant_dofs;
+    partitioner->extract_locally_relevant_dofs (i,locally_relevant_dofs);
+
+    partition_constraints[i].clear();
+
+    partition_constraints[i].reinit(locally_relevant_dofs);
+
+    DoFTools::make_hanging_node_constraints(dof_handler,
+                                            partition_constraints[i]);
+
+    VectorTools::interpolate_boundary_values (dof_handler,
+                                              0,
+                                              ZeroFunction<dim>(),
+                                              partition_constraints[i]);
+
+    DoFTools::make_hanging_node_constraints(dof_handler,partition_constraints[i]);
+    partition_constraints[i].close();
+  }
 
   setup_time += time.wall_time();
   time_details << "Distribute DoFs & B.C.     (CPU/wall) "
                << time() << "s/" << time.wall_time() << "s" << std::endl;
   time.restart();
 
-  system_matrix.reinit (dof_handler, constraints);
+  system_matrix.reinit (dof_handler, partitioner, partition_constraints);
 
   if(!QUIET) {
     std::cout.precision(4);
@@ -139,8 +177,8 @@ void LaplaceProblem<dim,fe_degree>::setup_system ()
   }
 
   solution_host.reinit (dof_handler.n_dofs());
-  solution_update.reinit (dof_handler.n_dofs());
-  system_rhs.reinit (dof_handler.n_dofs());
+  solution_update.reinit (partitioner);
+  system_rhs.reinit (partitioner);
 
   setup_time += time.wall_time();
   time_details << "Setup matrix-free system   (CPU/wall) "
@@ -153,6 +191,8 @@ template <int dim, int fe_degree>
 void LaplaceProblem<dim,fe_degree>::assemble_system ()
 {
   Timer time;
+
+  solution_host = 0;
 
   std::map<types::global_dof_index, double> boundary_values;
   VectorTools::interpolate_boundary_values(dof_handler, 0, Solution<dim>(), boundary_values);
@@ -216,12 +256,13 @@ void LaplaceProblem<dim,fe_degree>::assemble_system ()
       local_rhs(i) = rhs_val;
     }
 
-    constraints.distribute_local_to_global(local_rhs,local_dof_indices,
-                                           system_rhs_host);
+    global_constraints.distribute_local_to_global(local_rhs,local_dof_indices,
+                                                  system_rhs_host);
   }
 
   system_matrix.compute_diagonal();
   system_rhs = system_rhs_host;
+  system_rhs.update_ghost_values();
 
   setup_time += time.wall_time();
   time_details << "Assemble right hand side   (CPU/wall) "
@@ -234,14 +275,14 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 {
   Timer time;
 
-  typedef PreconditionChebyshev<SystemMatrixType,VectorType > PreconditionType;
+  // typedef PreconditionChebyshev<SystemMatrixType,VectorType > PreconditionType;
 
-  PreconditionType preconditioner;
-  typename PreconditionType::AdditionalData additional_data;
+  // PreconditionType preconditioner;
+  // typename PreconditionType::AdditionalData additional_data;
 
-  additional_data.preconditioner=system_matrix.get_diagonal_inverse();
+  // additional_data.preconditioner=system_matrix.get_diagonal_inverse();
 
-  preconditioner.initialize(system_matrix,additional_data);
+  // preconditioner.initialize(system_matrix,additional_data);
 
 
   SolverControl           solver_control (10000, 1e-12*system_rhs.l2_norm());
@@ -257,7 +298,8 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   time.reset();
   time.start();
   cg.solve (system_matrix, solution_update, system_rhs,
-            preconditioner);
+            // preconditioner);
+            PreconditionIdentity());
 
   time.stop();
 
@@ -274,7 +316,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 
 
   Vector<number> solution_update_host = solution_update.toVector();
-  constraints.distribute(solution_update_host);
+  global_constraints.distribute(solution_update_host);
   solution_host += solution_update_host;
 
 
@@ -321,6 +363,7 @@ void LaplaceProblem<dim,fe_degree>::run (unsigned int min_cycle, unsigned int ma
   domain_case_t domain = CUBE;
   grid_case_t initial_grid = UNIFORM;
   grid_case_t grid_refinement = UNIFORM;
+  unsigned int n_partitions = 1;
 
   create_mesh(triangulation,domain,initial_grid);
 
@@ -336,7 +379,7 @@ void LaplaceProblem<dim,fe_degree>::run (unsigned int min_cycle, unsigned int ma
     if(cycle != min_cycle)
       refine_mesh(triangulation,grid_refinement);
 
-    setup_system ();
+    setup_system (n_partitions);
     assemble_system ();
     solve ();
     if(!QUIET) {
@@ -419,7 +462,7 @@ int main (int argc, char **argv)
     return 1;
   }
 
-  GrowingVectorMemory<GpuVector<number> >::release_unused_memory();
+  GrowingVectorMemory<MultiGpuVector<number> >::release_unused_memory();
 
   return 0;
 }
