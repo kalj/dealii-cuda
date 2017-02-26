@@ -5,17 +5,10 @@
  *
  */
 
-#include <cfloat>
-
 #include "gpu_vec.h"
 #include "atomic.cuh"
 #include "cuda_utils.cuh"
 
-#include <deal.II/lac/vector_memory.templates.h>
-template class VectorMemory<GpuVector<double> >;
-template class GrowingVectorMemory<GpuVector<double> >;
-template class VectorMemory<GpuVector<float> >;
-template class GrowingVectorMemory<GpuVector<float> >;
 
 #define BKSIZE_ELEMWISE_OP 512
 #define CHUNKSIZE_ELEMWISE_OP 8
@@ -677,3 +670,9 @@ INSTANTIATE_COPY_WITH_INDICES(double,float,unsigned int);
 
 INSTANTIATE_COPY_WITH_INDICES(float,double,int);
 INSTANTIATE_COPY_WITH_INDICES(float,double,unsigned int);
+
+#include <deal.II/lac/vector_memory.templates.h>
+template class VectorMemory<GpuVector<double> >;
+template class GrowingVectorMemory<GpuVector<double> >;
+template class VectorMemory<GpuVector<float> >;
+template class GrowingVectorMemory<GpuVector<float> >;
