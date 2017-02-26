@@ -51,8 +51,10 @@ SET(MATRIX_FREE_GPU_SOURCES
   matrix_free_gpu/gpu_vec.cu
   matrix_free_gpu/mg_transfer_matrix_free_gpu.cu
   matrix_free_gpu/multi_gpu_vec.cu
+  matrix_free_gpu/multi_gpu_list.cu
   matrix_free_gpu/cuda_sparse_matrix.cu
   matrix_free_gpu/coloring.cc
+  matrix_free_gpu/cuda_memory_utils.cu
   matrix_free_gpu/constraint_handler_gpu.cu
   matrix_free_gpu/gpu_partitioner.cc
   )
