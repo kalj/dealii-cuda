@@ -17,7 +17,7 @@
 #include "defs.h"
 #include "utils.h"
 #include "gpu_array.cuh"
-#include "gpu_vec.h"
+#include "multi_gpu_vec.h"
 #include "maybecuda.h"
 #include "cuda_utils.cuh"
 
@@ -38,8 +38,11 @@
 using namespace dealii;
 
 // forward declaration of initialization help class
-template <int dim, typename Number>
-class ReinitHelper;
+namespace internal
+{
+  template <int dim, typename Number>
+  class ReinitHelper;
+}
 
 
 __constant__ double shape_values_double[(MAX_ELEM_DEGREE+1)*(MAX_ELEM_DEGREE+1)];
@@ -77,12 +80,14 @@ struct ConstantMemoryWrapper<float>
   }
 };
 
+
 template <int dim, typename Number>
 class MatrixFreeGpu {
 public:
+
   typedef GpuArray<dim,GpuArray<dim,Number> > jac_type;
   typedef GpuArray<dim,Number> point_type;
-  std::vector<unsigned int> n_cells;
+  std::vector<std::vector<unsigned int> > n_cells;
   unsigned int fe_degree;
   unsigned int n_cells_tot;
   unsigned int n_dofs;
@@ -91,7 +96,7 @@ public:
 
   bool use_coloring;
 
-  unsigned int num_colors;
+  std::vector<unsigned int> num_colors;
 
   enum ParallelizationScheme {scheme_par_in_elem, scheme_par_over_elems};
 
@@ -113,7 +118,6 @@ public:
     ParallelizationScheme parallelization_scheme;
 
     bool                use_coloring;
-    unsigned int        num_colors;
 
     UpdateFlags         mapping_update_flags;
 
@@ -136,29 +140,32 @@ private:
   // stuff related to FE ...
 
   // ...and quadrature
-  std::vector<point_type*> quadrature_points;
+  std::vector<std::vector<point_type*> > quadrature_points;
+
 
   // mapping and mesh info
   // (could be made into a mapping_info struct)
-  std::vector<unsigned int*>    loc2glob;
-  std::vector<Number*>          inv_jac;
-  std::vector<Number*>          JxW;
+  std::vector<std::vector<unsigned int*> >    loc2glob;
+  std::vector<std::vector<Number*> >          inv_jac;
+  std::vector<std::vector<Number*> >          JxW;
 
   // constraints
 #ifdef MATRIX_FREE_HANGING_NODES
-  std::vector<unsigned int*>    constraint_mask;
+  std::vector<std::vector<unsigned int*>>    constraint_mask;
 #endif
 
   // GPU kernel parameters
-  std::vector<dim3> grid_dim;
-  std::vector<dim3> block_dim;
+  std::vector<std::vector<dim3> > grid_dim;
+  std::vector<std::vector<dim3> > block_dim;
 
   // related to parallelization
   unsigned int cells_per_block;
 
   // for alignment
   unsigned int rowlength;
-  std::vector<unsigned int> rowstart;
+  std::vector<std::vector<unsigned int>> rowstart;
+
+  std::shared_ptr<const GpuPartitioner> partitioner;
 
 public:
 
@@ -191,41 +198,52 @@ public:
 
   unsigned int get_rowlength() const;
 
-  void reinit(const Mapping<dim>        &mapping,
-              const DoFHandler<dim>     &dof_handler,
-              const ConstraintMatrix    &constraints,
-              const Quadrature<1>       &quad,
-              const AdditionalData      additional_data = AdditionalData());
+  void reinit(const Mapping<dim>                          &mapping,
+              const DoFHandler<dim>                       &dof_handler,
+              const std::shared_ptr<const GpuPartitioner> &partitioner,
+              const std::vector<ConstraintMatrix>         &constraints,
+              const Quadrature<1>                         &quad,
+              const AdditionalData                        additional_data = AdditionalData());
 
 
 
-  void reinit(const DoFHandler<dim>     &dof_handler,
-              const ConstraintMatrix    &constraints,
-              const Quadrature<1>       &quad,
-              const AdditionalData      additional_data = AdditionalData());
+  void reinit(const DoFHandler<dim>                       &dof_handler,
+              const std::shared_ptr<const GpuPartitioner> &partitioner,
+              const std::vector<ConstraintMatrix>         &constraints,
+              const Quadrature<1>                         &quad,
+              const AdditionalData                        additional_data = AdditionalData());
 
-  GpuData get_gpu_data(unsigned int color) const;
+  GpuData get_gpu_data(unsigned int partition, unsigned int color) const;
 
   // apply the local operation on each element in parallel. loc_op is a vector
   // with one entry for each color. That is usually the same operator, but with
   // different local data (e.g. coefficient values).
+  // template <typename LocOp>
+  // void cell_loop(MultiGpuVector<Number>       &dst,
+  //                const MultiGpuVector<Number> &src,
+  //                const LocOp                  &loc_op) const;
   template <typename LocOp>
-  void cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,
-                 const LocOp &loc_op) const;
+  void cell_loop(MultiGpuVector<Number>       &dst,
+                 const MultiGpuVector<Number> &src,
+                 const MultiGpuList<Number> &coeff) const;
 
   // same but for only a single vector (the destination)
+  // template <typename LocOp>
+  // void cell_loop(MultiGpuVector<Number> &dst,
+  //                const LocOp            &loc_op) const;
+
   template <typename LocOp>
-  void cell_loop(GpuVector<Number> &dst,
-                 const LocOp &loc_op) const;
+  void cell_loop(MultiGpuVector<Number>       &dst,
+                 const MultiGpuList<Number> &coeff) const;
 
   void free();
 
   template <typename Op>
-  void evaluate_on_cells(GpuVector<Number> &v) const;
+  void evaluate_on_cells(MultiGpuList<Number> &v) const;
 
   std::size_t memory_consumption() const;
 
-  friend class ReinitHelper<dim,Number>;
+  friend class ::internal::ReinitHelper<dim,Number>;
 };
 
 
@@ -250,30 +268,31 @@ unsigned int MatrixFreeGpu<dim,Number>::get_rowlength() const
 
 template <int dim, typename Number>
 void MatrixFreeGpu<dim,Number>::reinit(const DoFHandler<dim>     &dof_handler,
-                                       const ConstraintMatrix    &constraints,
+                                       const std::shared_ptr<const GpuPartitioner> &partitioner_in,
+                                       const std::vector<ConstraintMatrix>    &constraints,
                                        const Quadrature<1>       &quad,
                                        const AdditionalData      additional_data)
 {
   MappingQ1<dim>  mapping;
-  reinit(mapping,dof_handler,constraints,quad,additional_data);
+  reinit(mapping,dof_handler,partitioner_in,constraints,quad,additional_data);
 }
 
 template <int dim, typename Number>
 MatrixFreeGpu<dim,Number>::GpuData
-MatrixFreeGpu<dim,Number>::get_gpu_data(unsigned int color) const
+MatrixFreeGpu<dim,Number>::get_gpu_data(unsigned int partition, unsigned int color) const
 {
   MatrixFreeGpu<dim,Number>::GpuData data;
-  data.quadrature_points = quadrature_points[color];
-  data.loc2glob = loc2glob[color];
-  data.inv_jac = inv_jac[color];
-  data.JxW = JxW[color];
+  data.quadrature_points = quadrature_points[partition][color];
+  data.loc2glob = loc2glob[partition][color];
+  data.inv_jac = inv_jac[partition][color];
+  data.JxW = JxW[partition][color];
 #ifdef MATRIX_FREE_HANGING_NODES
-  data.constraint_mask = constraint_mask[color];
+  data.constraint_mask = constraint_mask[partition][color];
 #endif
-  data.n_cells = n_cells[color];
+  data.n_cells = n_cells[partition][color];
   data.use_coloring = use_coloring;
   data.rowlength = rowlength;
-  data.rowstart = rowstart[color];
+  data.rowstart = rowstart[partition][color];
   return data;
 }
 
@@ -366,29 +385,73 @@ __global__ void apply_kernel_shmem (Number                          *dst,
 
 
 
+// template <int dim, typename Number>
+// template <typename LocOp>
+// void MatrixFreeGpu<dim,Number>::cell_loop(MultiGpuVector<Number> &dst, const MultiGpuVector<Number> &src,
+//                                           const LocOp &loc_op) const
+// {
+//   for(int p = 0; p < partitioner->n_partitions(); ++p) {
+//     for(int c = 0; c < num_colors[p]; ++c) {
+
+//       CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+//       apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[p][c],block_dim[p][c]>>> (dst.getData(p),
+//                                                                                  src.getDataRO(p),
+//                                                                                  loc_op, get_gpu_data(p,c));
+//       CUDA_CHECK_LAST;
+//     }
+//   }
+// }
+
+// template <int dim, typename Number>
+// template <typename LocOp>
+// void MatrixFreeGpu<dim,Number>::cell_loop(MultiGpuVector<Number> &dst,
+//                                           const LocOp &loc_op) const
+// {
+//   for(int p = 0; p < partitioner->n_partitions(); ++p) {
+//     for(int c = 0; c < num_colors[p]; ++c) {
+
+//       CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+
+//       apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[p][c],block_dim[p][c]>>> (dst.getData(p),
+//                                                                                  loc_op, get_gpu_data(p,c));
+//       CUDA_CHECK_LAST;
+//     }
+//   }
+// }
+
 template <int dim, typename Number>
 template <typename LocOp>
-void MatrixFreeGpu<dim,Number>::cell_loop(GpuVector<Number> &dst, const GpuVector<Number> &src,
-                                          const LocOp &loc_op) const
+void MatrixFreeGpu<dim,Number>::cell_loop(MultiGpuVector<Number> &dst, const MultiGpuVector<Number> &src,
+                                          const MultiGpuList<Number> &coeff) const
 {
-  for(int c = 0; c < num_colors; ++c) {
+  for(int p = 0; p < partitioner->n_partitions(); ++p) {
+    LocOp loc_op{coeff.getDataRO(p)};
+    for(int c = 0; c < num_colors[p]; ++c) {
 
-    apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[c],block_dim[c]>>> (dst.getData(), src.getDataRO(),
-                                                                         loc_op, get_gpu_data(c));
-    CUDA_CHECK_LAST;
+      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+      apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[p][c],block_dim[p][c]>>> (dst.getData(p),
+                                                                                 src.getDataRO(p),
+                                                                                 loc_op, get_gpu_data(p,c));
+      CUDA_CHECK_LAST;
+    }
   }
 }
 
 template <int dim, typename Number>
 template <typename LocOp>
-void MatrixFreeGpu<dim,Number>::cell_loop(GpuVector<Number> &dst,
-                                          const LocOp &loc_op) const
+void MatrixFreeGpu<dim,Number>::cell_loop(MultiGpuVector<Number> &dst,
+                                          const MultiGpuList<Number> &coeff) const
 {
-  for(int c = 0; c < num_colors; ++c) {
+  for(int p = 0; p < partitioner->n_partitions(); ++p) {
+    LocOp loc_op{coeff.getDataRO(p)};
+    for(int c = 0; c < num_colors[p]; ++c) {
 
-    apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[c],block_dim[c]>>> (dst.getData(),
-                                                                         loc_op, get_gpu_data(c));
-    CUDA_CHECK_LAST;
+      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+
+      apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[p][c],block_dim[p][c]>>> (dst.getData(p),
+                                                                                 loc_op, get_gpu_data(p,c));
+      CUDA_CHECK_LAST;
+    }
   }
 }
 
@@ -414,41 +477,48 @@ __global__ void cell_eval_kernel (Number                                        
 
 template <int dim, typename Number>
 template <typename Op>
-void MatrixFreeGpu<dim,Number>::evaluate_on_cells(GpuVector<Number> &vec) const
+void MatrixFreeGpu<dim,Number>::evaluate_on_cells(MultiGpuList<Number> &vec) const
 {
-  vec.resize (n_cells_tot * rowlength);
+  // vec.resize (n_cells_tot * rowlength);
 
-  for(int c = 0; c < num_colors; ++c) {
+  for(int p = 0; p < partitioner->n_partitions(); ++p) {
+    for(int c = 0; c < num_colors[p]; ++c) {
 
-    const unsigned int num_blocks = ceil(n_cells[c] / float(BKSIZE_COEFF_EVAL));
-    const unsigned int num_blocks_x = round(sqrt(num_blocks)); // get closest to even square.
-    const unsigned int num_blocks_y = ceil(double(num_blocks)/num_blocks_x);
+      const unsigned int num_blocks = ceil(n_cells[p][c] / float(BKSIZE_COEFF_EVAL));
+      const unsigned int num_blocks_x = round(sqrt(num_blocks)); // get closest to even square.
+      const unsigned int num_blocks_y = ceil(double(num_blocks)/num_blocks_x);
 
-    const dim3 grid_dim = dim3(num_blocks_x,num_blocks_y);
-    const dim3 block_dim = dim3(BKSIZE_COEFF_EVAL);
+      const dim3 grid_dim = dim3(num_blocks_x,num_blocks_y);
+      const dim3 block_dim = dim3(BKSIZE_COEFF_EVAL);
 
-    cell_eval_kernel<dim,Number,Op> <<<grid_dim,block_dim>>> (vec.getData() + rowstart[c],
-                                                              get_gpu_data(c));
-    CUDA_CHECK_LAST;
-
+      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+      cell_eval_kernel<dim,Number,Op> <<<grid_dim,block_dim>>> (vec.getData(p) + rowstart[p][c],
+                                                                get_gpu_data(p,c));
+      CUDA_CHECK_LAST;
+    }
   }
 }
 
 template <int dim, typename Number>
 std::size_t MatrixFreeGpu<dim,Number>::memory_consumption() const
 {
-  std::size_t bytes = n_cells.size()*sizeof(unsigned int)*(2) // n_cells and rowstarts
-    + 2*num_colors*sizeof(dim3);                               // kernel launch parameters
+  std::size_t bytes = 0;
 
-  for(int c = 0; c < num_colors; ++c) {
-    bytes +=
-      n_cells[c]*rowlength*sizeof(unsigned int)     // loc2glob
-      + n_cells[c]*rowlength*dim*dim*sizeof(Number) // inv_jac
-      + n_cells[c]*rowlength*sizeof(Number)         // JxW
-      + n_cells[c]*rowlength*sizeof(point_type);    // quadrature_points
+  for(int p = 0; p < partitioner->n_partitions(); ++p) {
+
+    bytes += n_cells[p].size()*sizeof(unsigned int)*(2) // n_cells and rowstarts
+      + 2*num_colors[p]*sizeof(dim3);                   // kernel launch parameters
+
+    for(int c = 0; c < num_colors[p]; ++c) {
+      bytes +=
+        n_cells[p][c]*rowlength*sizeof(unsigned int)     // loc2glob
+        + n_cells[p][c]*rowlength*dim*dim*sizeof(Number) // inv_jac
+        + n_cells[p][c]*rowlength*sizeof(Number)         // JxW
+        + n_cells[p][c]*rowlength*sizeof(point_type);    // quadrature_points
 #ifdef MATRIX_FREE_HANGING_NODES
-      bytes += n_cells[c]*sizeof(unsigned int);     // constraint_mask
+      bytes += n_cells[p][c]*sizeof(unsigned int);     // constraint_mask
 #endif
+    }
   }
 
   return bytes;
