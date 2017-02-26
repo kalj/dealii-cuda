@@ -190,7 +190,7 @@ namespace dealii
   template <typename Number>
   MultiGpuVector<Number>::~MultiGpuVector()
   {
-    for(int i=0; i<partitioner->n_partitions(); ++i) {
+    for(int i=0; i<vec.size(); ++i) {
       CUDA_CHECK_SUCCESS(cudaSetDevice(i));
       if(vec[i] != NULL) {
         CUDA_CHECK_SUCCESS(cudaFree(vec[i]));
@@ -230,6 +230,8 @@ namespace dealii
         }
       }
 
+    vec.resize(0);
+
     partitioner = NULL;
   }
 
@@ -243,8 +245,9 @@ namespace dealii
       // we have a partitioner
 
       // if we already have same or equivalent partitioner, just return
-      if(partitioner->is_compatible(*partitioner_in))
-        return;
+      // FIXME: this doesn't work now, as our partitioner has probably changed....
+      // if(partitioner->is_compatible(*partitioner_in))
+        // return;
 
       if( partitioner_in->n_partitions() > partitioner->n_partitions()) {
         local_sizes.resize(partitioner_in->n_partitions(),0);
@@ -257,6 +260,7 @@ namespace dealii
           if(vec[i] != NULL) {
             CUDA_CHECK_SUCCESS(cudaSetDevice(i));
             CUDA_CHECK_SUCCESS(cudaFree(vec[i]));
+            vec[i] = NULL;
           }
         }
         vec.resize(partitioner_in->n_partitions());
@@ -287,6 +291,7 @@ namespace dealii
 
     // now just need to set up ghost data
     import_data.reinit(partitioner_in,partitioner->n_import_indices());
+    import_indices.reinit(partitioner_in,partitioner->n_import_indices());
     import_indices = partitioner_in->import_indices();
 
     vector_is_ghosted = false;
@@ -297,6 +302,7 @@ namespace dealii
         CUDA_CHECK_SUCCESS(cudaSetDevice(i));
         CUDA_CHECK_SUCCESS(cudaMemset(vec[i], 0, local_sizes[i]*sizeof(Number)));
       }
+
   }
 
 
@@ -1062,7 +1068,7 @@ namespace dealii
       const unsigned int i = threadIdx.x + blockIdx.x*blockDim.x;
       if(i<n) {
         if(atomic)
-          atomicAdd(&dst[dst_indices[i]],src[i]);
+          atomicAddWrapper(&dst[dst_indices[i]],src[i]);
         else
           dst[dst_indices[i]] += src[i];
       }

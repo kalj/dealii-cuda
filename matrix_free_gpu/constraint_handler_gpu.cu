@@ -47,6 +47,8 @@ namespace kernels
 template <typename Number>
 void ConstraintHandlerGpu<Number>::reinit_kernel_parameters()
 {
+  grid_dim.resize(n_partitions);
+
   for(int part=0; part<n_partitions; ++part) {
     const unsigned int n_constrained_dofs = constrained_indices.local_size(part);
     const unsigned int num_blocks = ceil(n_constrained_dofs / float(CONSTRAINT_OPS_BKSIZE));

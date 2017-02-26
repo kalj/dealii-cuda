@@ -156,6 +156,7 @@ private:
 
   // GPU kernel parameters
   std::vector<std::vector<dim3> > grid_dim;
+  // FIXME: a single copy should suffice?
   std::vector<std::vector<dim3> > block_dim;
 
   // related to parallelization
@@ -479,9 +480,16 @@ template <int dim, typename Number>
 template <typename Op>
 void MatrixFreeGpu<dim,Number>::evaluate_on_cells(MultiGpuList<Number> &vec) const
 {
-  // vec.resize (n_cells_tot * rowlength);
+
+  std::vector<unsigned int > sizes(partitioner->n_partitions());
+  for(int p = 0; p < partitioner->n_partitions(); ++p) {
+    sizes[p] = partitioner->n_cells(p)*rowlength;
+  }
+
+  vec.reinit(partitioner,sizes);
 
   for(int p = 0; p < partitioner->n_partitions(); ++p) {
+
     for(int c = 0; c < num_colors[p]; ++c) {
 
       const unsigned int num_blocks = ceil(n_cells[p][c] / float(BKSIZE_COEFF_EVAL));

@@ -1,3 +1,5 @@
+#include <deal.II/base/exceptions.h>
+
 #include "multi_gpu_list.h"
 #include "cuda_utils.cuh"
 #include "cuda_memory_utils.h"
@@ -65,22 +67,30 @@ namespace dealii
   void MultiGpuList<T>::reinit(const std::shared_ptr<const GpuPartitioner> &partitioner_in,
                                const std::vector<unsigned int> sizes)
   {
-    // first check if the partitioning needs to be adjusted
-    if( partitioner_in->n_partitions() > partitioner->n_partitions()) {
-      local_sizes.resize(partitioner_in->n_partitions(),0);
-      values.resize(partitioner_in->n_partitions(), NULL);
-    }
-    else if(partitioner_in->n_partitions() < partitioner->n_partitions()) {
-      local_sizes.resize(partitioner_in->n_partitions());
-      // free up items to remove
-      for(int i=partitioner_in->n_partitions(); i<partitioner->n_partitions(); ++i) {
-        if(values[i] != NULL) {
-          CUDA_CHECK_SUCCESS(cudaSetDevice(i));
-          CUDA_CHECK_SUCCESS(cudaFree(values[i]));
-        }
+    if(partitioner != NULL) {
+      // first check if the partitioning needs to be adjusted
+      if( partitioner_in->n_partitions() > partitioner->n_partitions()) {
+        local_sizes.resize(partitioner_in->n_partitions(),0);
+        values.resize(partitioner_in->n_partitions(), NULL);
       }
-      values.resize(partitioner_in->n_partitions());
+      else if(partitioner_in->n_partitions() < partitioner->n_partitions()) {
+        local_sizes.resize(partitioner_in->n_partitions());
+        // free up items to remove
+        for(int i=partitioner_in->n_partitions(); i<partitioner->n_partitions(); ++i) {
+          if(values[i] != NULL) {
+            CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+            CUDA_CHECK_SUCCESS(cudaFree(values[i]));
+            values[i] = NULL;
+          }
+        }
+        values.resize(partitioner_in->n_partitions());
+      }
     }
+    else {
+      local_sizes.resize(partitioner_in->n_partitions(),0);
+      values.resize(partitioner_in->n_partitions(),NULL);
+    }
+
 
     // now the number of partitions are right, but sizes are possibly wrong
     for(int i=0; i<partitioner_in->n_partitions(); ++i) {
@@ -121,6 +131,7 @@ namespace dealii
       local_sizes[i] = 0;
     }
     global_size = 0;
+    partitioner = NULL;
   }
 
   template <typename T>
@@ -159,6 +170,7 @@ namespace dealii
   template <typename T>
   MultiGpuList<T>& MultiGpuList<T>::operator=(const std::vector<T> &host_arr)
   {
+    Assert(partitioner != NULL,ExcMessage("partitioner is not initialized"));
     AssertDimension(host_arr.size(),global_size);
 
     unsigned int offset = 0;
@@ -175,6 +187,7 @@ namespace dealii
   template <typename T>
   MultiGpuList<T>& MultiGpuList<T>::operator=(const std::vector<std::vector<T> > &host_arr)
   {
+    Assert(partitioner != NULL,ExcMessage("partitioner is not initialized"));
     AssertDimension(host_arr.size(),partitioner->n_partitions());
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {

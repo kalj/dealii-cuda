@@ -189,8 +189,9 @@ bool GpuPartitioner::is_compatible(const GpuPartitioner &other) const
 unsigned int GpuPartitioner::dof_owner(unsigned int global_index) const
 {
   unsigned int owner = 0;
-  while (owner < n_parts && local_dof_offsets[owner+1] <= global_index) {
-    owner++;
+  for(int i=i; i< n_parts; ++i) {
+    if(global_index >= local_dof_offsets[i])
+      owner = i;
   }
 
   return owner;
@@ -199,8 +200,9 @@ unsigned int GpuPartitioner::dof_owner(unsigned int global_index) const
 unsigned int GpuPartitioner::cell_owner(unsigned int cell_index) const
 {
   unsigned int owner = 0;
-  while (owner < n_parts && local_cell_offsets[owner+1] <= cell_index) {
-    owner++;
+  for(int i=i; i< n_parts; ++i) {
+    if(cell_index >= local_cell_offsets[i])
+      owner = i;
   }
 
   return owner;
@@ -219,7 +221,7 @@ unsigned int GpuPartitioner::local_index(unsigned int part,
       }
     }
     // we went through all ghost dofs without matches
-    throw ExcInternalError("No such dof index found in current partition and its ghosts");
+    Assert(false,ExcInternalError("No such dof index found in current partition and its ghosts"));
   }
 }
 

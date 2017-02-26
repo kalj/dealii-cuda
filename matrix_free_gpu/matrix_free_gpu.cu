@@ -139,7 +139,10 @@ reinit(const Mapping<dim>                          &mapping,
 {
 
   if(typeid(Number) == typeid(double)) {
-    cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+    for(int p=0; p<partitioner_in->n_partitions(); ++p) {
+      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+      CUDA_CHECK_SUCCESS(cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte));
+    }
   }
 
   use_coloring = additional_data.use_coloring;
@@ -154,7 +157,7 @@ reinit(const Mapping<dim>                          &mapping,
 
   this->parallelization_scheme = additional_data.parallelization_scheme;
 
-  free(); // todo, only free if we actually need arrays of different length
+  // free(); // todo, only free if we actually need arrays of different length
 
   const FiniteElement<dim> &fe = dof_handler.get_fe();
 
@@ -205,6 +208,23 @@ reinit(const Mapping<dim>                          &mapping,
 
   partitioner = partitioner_in;
 
+  n_cells.resize(partitioner->n_partitions());
+  num_colors.resize(partitioner->n_partitions());
+
+  quadrature_points.resize(partitioner->n_partitions());
+  loc2glob.resize(partitioner->n_partitions());
+  inv_jac.resize(partitioner->n_partitions());
+  JxW.resize(partitioner->n_partitions());
+
+  rowstart.resize(partitioner->n_partitions());
+
+  grid_dim.resize(partitioner->n_partitions());
+  block_dim.resize(partitioner->n_partitions());
+
+#ifdef MATRIX_FREE_HANGING_NODES
+  constraint_mask.resize(partitioner->n_partitions());
+#endif
+
   ::internal::ReinitHelper<dim,Number> helper(this,mapping,fe,quad,shape_info,
                                             dof_handler,update_flags);
 
@@ -253,6 +273,7 @@ reinit(const Mapping<dim>                          &mapping,
     }
 
   }
+
 }
 
 
@@ -264,6 +285,7 @@ void MatrixFreeGpu<dim,Number>::free()
 
   for(int p = 0; p < partitioner->n_partitions(); ++p) {
     for(int c = 0; c < num_colors[p]; ++c) {
+      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
       if(quadrature_points[p][c] != NULL) CUDA_CHECK_SUCCESS(cudaFree(quadrature_points[p][c]));
       if(loc2glob[p][c] != NULL)          CUDA_CHECK_SUCCESS(cudaFree(loc2glob[p][c]));
       if(inv_jac[p][c] != NULL)           CUDA_CHECK_SUCCESS(cudaFree(inv_jac[p][c]));
@@ -379,24 +401,24 @@ namespace internal
   template <int dim, typename Number>
   void ReinitHelper<dim,Number>::setup_color_arrays(const unsigned int num_colors)
   {
-    data->n_cells.resize(num_colors);
-    data->grid_dim.resize(num_colors);
-    data->block_dim.resize(num_colors);
-    data->loc2glob.resize(num_colors);
+    data->n_cells[current_partition].resize(num_colors);
+    data->grid_dim[current_partition].resize(num_colors);
+    data->block_dim[current_partition].resize(num_colors);
+    data->loc2glob[current_partition].resize(num_colors);
 #ifdef MATRIX_FREE_HANGING_NODES
-    data->constraint_mask.resize(num_colors);
+    data->constraint_mask[current_partition].resize(num_colors);
 #endif
 
-    data->rowstart.resize(num_colors);
+    data->rowstart[current_partition].resize(num_colors);
 
     if(update_flags & update_quadrature_points)
-      data->quadrature_points.resize(num_colors);
+      data->quadrature_points[current_partition].resize(num_colors);
 
     if(update_flags & update_JxW_values)
-      data->JxW.resize(num_colors);
+      data->JxW[current_partition].resize(num_colors);
 
     if(update_flags & update_gradients)
-      data->inv_jac.resize(num_colors);
+      data->inv_jac[current_partition].resize(num_colors);
   }
 
   template <int dim, typename Number>
@@ -567,6 +589,7 @@ namespace internal
     if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
       transpose_inplace(loc2glob_host,n_cells, rowlength);
     }
+    CUDA_CHECK_SUCCESS(cudaSetDevice(current_partition));
     alloc_and_copy(&data->loc2glob[current_partition][c],
                    loc2glob_host,
                    n_cells*rowlength);
