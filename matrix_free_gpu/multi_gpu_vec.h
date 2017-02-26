@@ -15,6 +15,7 @@
 #include <cstddef>
 
 #include "gpu_partitioner.h"
+#include "multi_gpu_list.h"
 
 
 namespace dealii
@@ -35,19 +36,20 @@ namespace dealii
         :ptr(p), owning_device(owner) {}
       DevRef& operator=(const Number value);
     };
+
   private:
 
     // contains locally owned values, followed by ghost values
     std::vector<Number *> vec;
 
     // buffers to receive and send data that is ghosted on other devices
-    mutable std::vector<Number *> import_data;
+    mutable MultiGpuList<Number> import_data;
 
     // the indices of which of my dofs are ghosted on others
-    std::vector<unsigned int* > import_indices;
+    MultiGpuList<unsigned int> import_indices;
 
     // size of owned section
-    std::vector<unsigned int> local_size;
+    std::vector<unsigned int> local_sizes;
 
     // global size
     unsigned int global_size;
@@ -74,10 +76,16 @@ namespace dealii
     template <typename OtherNumber>
     MultiGpuVector(const MultiGpuVector<OtherNumber>& old);
 
+    const std::shared_ptr<const GpuPartitioner> &get_partitioner() const
+    {
+      return partitioner;
+    }
+
     // same for assignment
     MultiGpuVector<Number>& operator=(const MultiGpuVector<Number>& old);
     MultiGpuVector<Number>& operator=(const Vector<Number>& old_cpu);
     MultiGpuVector<Number>& operator=(const std::vector<Number>& old_cpu);
+
     template <typename OtherNumber>
     MultiGpuVector<Number>& operator=(const MultiGpuVector<OtherNumber>& old);
 
@@ -98,8 +106,8 @@ namespace dealii
     }
 
     // Access internal data buffer
-    // Number *getData() { return vec_dev; }
-    // const Number *getDataRO() const { return vec_dev; }
+    Number *getData(unsigned int part=0) { return vec[part]; }
+    const Number *getDataRO(unsigned int part=0) const { return vec[part]; }
 
     // initialize with single value
     MultiGpuVector& operator=(const Number n);
@@ -110,8 +118,13 @@ namespace dealii
     // necessary for deal.ii but shouldn't be used!
     Number operator()(const size_t i) const;
 
+    // only there for compatibility, only s==0 is valid which is equivalend to
+    // a clear
+    void reinit (unsigned int s);
+
     // initialize with a partitioner
-    void reinit (const std::shared_ptr<const GpuPartitioner> &partitioner_in);
+    void reinit (const std::shared_ptr<const GpuPartitioner> &partitioner_in,
+                 bool leave_elements_uninitialized = false);
 
     // resize to have the same structure
     // as the one provided and/or
@@ -120,6 +133,7 @@ namespace dealii
     // a default value equal to false
     void reinit (const MultiGpuVector<Number>&,
                  bool leave_elements_uninitialized = false);
+
 
     // scalar product
     Number operator * (const MultiGpuVector<Number> &v) const;
@@ -201,6 +215,28 @@ namespace dealii
     void update_ghost_values() const;
   };
 
+
+  template <bool atomic=false, typename Number>
+  void add_with_indices(MultiGpuVector<Number> &dst,
+                        const MultiGpuList<unsigned int> &dst_indices,
+                        const MultiGpuList<Number> &src);
+
+  template <typename Number>
+  void copy_with_indices(MultiGpuList<Number> &dst,
+                         const MultiGpuVector<Number> &src,
+                         const MultiGpuList<unsigned int> &src_indices);
+
+  template <typename Number>
+  void copy_with_indices(MultiGpuVector<Number> &dst,
+                         const MultiGpuList<unsigned int> &dst_indices,
+                         const MultiGpuList<Number> &src);
+
+
+  template <typename DstNumber, typename SrcNumber>
+  void copy_with_indices(MultiGpuVector<DstNumber> &dst,
+                         const MultiGpuList<unsigned int> &dst_indices,
+                         const MultiGpuVector<SrcNumber> &src,
+                         const MultiGpuList<unsigned int> &src_indices);
 }
 
 #endif /* _MULTI_GPU_VEC_H */
