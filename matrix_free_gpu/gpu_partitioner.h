@@ -5,6 +5,7 @@
 #ifndef _GPU_PARTITIONER_H
 #define _GPU_PARTITIONER_H
 
+#include <deal.II/base/index_set.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_accessor.h>
 
@@ -27,28 +28,25 @@ namespace dealii
 
     unsigned int n_dofs(unsigned int part) const;
 
+    void extract_locally_relevant_dofs(const unsigned int part,
+                                       IndexSet &index_set) const;
+
     unsigned int n_global_cells() const;
 
     unsigned int n_cells(unsigned int part) const;
 
     unsigned int local_dof_offset(unsigned int part) const;
 
-    bool is_compatible(const GpuPartitioner &other) const;
+    bool         is_compatible(const GpuPartitioner &other) const;
 
     unsigned int cell_owner(unsigned int cell_index) const;
 
     unsigned int dof_owner(unsigned int global_index) const;
 
-    unsigned int local_index(unsigned int global_index) const;
-
-    const std::vector<unsigned int>& import_indices(unsigned int owner) const;
+    unsigned int local_index(unsigned int part,
+                             unsigned int global_index) const;
 
     const std::vector<unsigned int>& ghost_indices(unsigned int with_ghost) const;
-
-    unsigned int n_import_indices(unsigned int owner) const;
-
-    unsigned int import_data_offset(unsigned int owner,
-                                    unsigned int with_ghost) const;
 
     unsigned int ghost_dofs_offset(unsigned int with_ghost,
                                    unsigned int owner) const;
@@ -58,6 +56,16 @@ namespace dealii
 
     unsigned int n_ghost_dofs_tot(unsigned int with_ghost) const;
 
+    const std::vector<unsigned int>&               import_indices(unsigned int owner) const;
+    const std::vector<std::vector<unsigned int> >& import_indices() const;
+
+    unsigned int n_import_indices(unsigned int owner) const;
+    const std::vector<unsigned int>& n_import_indices() const;
+
+    unsigned int import_data_offset(unsigned int owner,
+                                    unsigned int with_ghost) const;
+
+
     template <int dim>
     typename DoFHandler<dim>::active_cell_iterator begin_active(const DoFHandler<dim> &dof_handler,
                                                                 unsigned int partition) const;
@@ -65,6 +73,16 @@ namespace dealii
     template <int dim>
     typename DoFHandler<dim>::cell_iterator end(const DoFHandler<dim> &dof_handler,
                                                 unsigned int partition) const;
+
+    template <int dim>
+    typename DoFHandler<dim>::level_cell_iterator begin_mg(const DoFHandler<dim> &dof_handler,
+                                                            unsigned int partition,
+                                                            unsigned int level) const;
+
+    template <int dim>
+    typename DoFHandler<dim>::level_cell_iterator end_mg(const DoFHandler<dim> &dof_handler,
+                                                         unsigned int partition,
+                                                         unsigned int level) const;
 
 
   private:
@@ -82,7 +100,7 @@ namespace dealii
     std::vector<unsigned int>                local_dof_offsets;
     std::vector<unsigned int>                n_local_dofs;
 
-    // related do ghost dofs
+    // related to ghost dofs
     std::vector<std::vector<unsigned int> >  ghost_dof_indices;
     std::vector<std::vector<unsigned int> >  n_ghost_dofs_matrix;
 

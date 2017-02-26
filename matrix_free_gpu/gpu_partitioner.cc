@@ -156,6 +156,16 @@ unsigned int GpuPartitioner::n_global_dofs() const
   return n_dofs_tot;
 }
 
+void GpuPartitioner::extract_locally_relevant_dofs(const unsigned int part,
+                                                   IndexSet &index_set) const
+{
+  index_set.clear();
+  index_set.set_size (n_local_dofs[part]);
+
+  index_set.add_range (local_dof_offsets[part],
+                       local_dof_offsets[part]+n_local_dofs[part]);
+}
+
 unsigned int GpuPartitioner::n_cells(unsigned int part) const
 {
   return n_local_cells[part];
@@ -173,7 +183,7 @@ unsigned int GpuPartitioner::local_dof_offset(unsigned int part) const
 
 bool GpuPartitioner::is_compatible(const GpuPartitioner &other) const
 {
-  return true;
+  return this == &other;
 }
 
 unsigned int GpuPartitioner::dof_owner(unsigned int global_index) const
@@ -196,9 +206,21 @@ unsigned int GpuPartitioner::cell_owner(unsigned int cell_index) const
   return owner;
 }
 
-unsigned int GpuPartitioner::local_index(unsigned int global_index) const
+
+unsigned int GpuPartitioner::local_index(unsigned int part,
+                                         unsigned int global_index) const
 {
-  return global_index - local_dof_offsets[dof_owner(global_index)];
+  if(dof_owner(global_index) == part)
+    return global_index - local_dof_offsets[part];
+  else {
+    for(int i = 0; i < n_ghost_dofs_tot(part); ++i) {
+      if(ghost_dof_indices[part][i] == global_index) {
+        return n_local_dofs[part]+i;
+      }
+    }
+    // we went through all ghost dofs without matches
+    throw ExcInternalError("No such dof index found in current partition and its ghosts");
+  }
 }
 
 template <int dim>
@@ -224,14 +246,47 @@ typename DoFHandler<dim>::cell_iterator GpuPartitioner::end(const DoFHandler<dim
     return dof_handler.end();
 }
 
+
+
+template <int dim>
+typename DoFHandler<dim>::level_cell_iterator GpuPartitioner::begin_mg(const DoFHandler<dim> &dof_handler,
+                                                                       unsigned int partition,
+                                                                       unsigned int level) const
+{
+  // FIXME: Implement this!
+  AssertThrow(false,dealii::ExcNotImplemented());
+  return dof_handler.begin_mg(level);
+}
+
+template <int dim>
+typename DoFHandler<dim>::level_cell_iterator GpuPartitioner::end_mg(const DoFHandler<dim> &dof_handler,
+                                                                     unsigned int partition,
+                                                                     unsigned int level) const
+{
+  // FIXME: Implement this!
+  AssertThrow(false,dealii::ExcNotImplemented());
+  return dof_handler.end_mg(level);
+}
+
+
 const std::vector<unsigned int>& GpuPartitioner::import_indices(unsigned int owner) const
 {
   return import_inds[owner];
 }
 
+const std::vector<std::vector<unsigned int> >& GpuPartitioner::import_indices() const
+{
+  return import_inds;
+}
+
 unsigned int GpuPartitioner::n_import_indices(unsigned int owner) const
 {
   return n_import_inds[owner];
+}
+
+const std::vector<unsigned int>& GpuPartitioner::n_import_indices() const
+{
+  return n_import_inds;
 }
 
 unsigned int GpuPartitioner::import_data_offset(unsigned int owner,
@@ -278,6 +333,11 @@ const std::vector<unsigned int>& GpuPartitioner::ghost_indices(unsigned int with
 }
 
 
+//=============================================================================
+// explicit instantiations
+//=============================================================================
+
+// dim==2
 template GpuPartitioner::GpuPartitioner(const DoFHandler<2> &dof_handler,
                                         unsigned int num_partitions);
 template
@@ -290,7 +350,16 @@ template
 typename DoFHandler<2>::cell_iterator GpuPartitioner::end(const DoFHandler<2> &dof_handler,
                                                           unsigned int partition) const;
 
+template
+typename DoFHandler<2>::level_cell_iterator GpuPartitioner::begin_mg(const DoFHandler<2> &dof_handler,
+                                                                     unsigned int partition,
+                                                                     unsigned int level) const;
+template
+typename DoFHandler<2>::level_cell_iterator GpuPartitioner::end_mg(const DoFHandler<2> &dof_handler,
+                                                                     unsigned int partition,
+                                                                     unsigned int level) const;
 
+// dim==3
 template GpuPartitioner::GpuPartitioner(const DoFHandler<3> &dof_handler,
                                         unsigned int num_partitions);
 template
@@ -303,3 +372,12 @@ typename DoFHandler<3>::active_cell_iterator GpuPartitioner::begin_active(const 
 template
 typename DoFHandler<3>::cell_iterator GpuPartitioner::end(const DoFHandler<3> &dof_handler,
                                                           unsigned int partition) const;
+
+template
+typename DoFHandler<3>::level_cell_iterator GpuPartitioner::begin_mg(const DoFHandler<3> &dof_handler,
+                                                                     unsigned int partition,
+                                                                     unsigned int level) const;
+template
+typename DoFHandler<3>::level_cell_iterator GpuPartitioner::end_mg(const DoFHandler<3> &dof_handler,
+                                                                     unsigned int partition,
+                                                                     unsigned int level) const;
