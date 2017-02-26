@@ -4,6 +4,7 @@
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/manifold_lib.h>
+#include <deal.II/base/exceptions.h>
 #include <deal.II/base/vectorization.h>
 #include <deal.II/base/function.h>
 #include <deal.II/base/point.h>
@@ -239,9 +240,9 @@ void CoefficientFun<dim,Number>::value_list (const std::vector<dealii::Point<dim
                                              const unsigned int              component) const
 {
   Assert (values.size() == points.size(),
-          ExcDimensionMismatch (values.size(), points.size()));
+          dealii::ExcDimensionMismatch (values.size(), points.size()));
   Assert (component == 0,
-          ExcIndexRange (component, 0, 1));
+          dealii::ExcIndexRange (component, 0, 1));
 
   const unsigned int n_points = points.size();
   for (unsigned int i=0; i<n_points; ++i)

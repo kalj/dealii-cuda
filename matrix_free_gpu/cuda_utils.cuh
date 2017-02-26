@@ -9,15 +9,17 @@
 #define _CUDA_UTILS_H
 
 #include <cstdio>
+#include <deal.II/base/exceptions.h>
 
 #ifndef NCUDA_ERROR_CHECK
-#define CUDA_CHECK_SUCCESS(errorCall) do {                        \
-        cudaError_t error_variable=errorCall;                     \
-        if(cudaSuccess != error_variable) {                       \
-            fprintf(stderr,"Error in %s (%d): %s\n",__FILE__,     \
-                    __LINE__,cudaGetErrorString(error_variable)); \
-            exit(1);                                              \
-        }                                                         \
+#define CUDA_CHECK_SUCCESS(errorCall) do {                              \
+        cudaError_t return_status=errorCall;                            \
+        if(return_status != cudaSuccess) {                              \
+            char buf[200];                                              \
+            snprintf(buf,sizeof(buf),"Error in %s (%d): %s\n",__FILE__, \
+                     __LINE__,cudaGetErrorString(return_status));       \
+            AssertThrow(return_status==cudaSuccess, dealii::ExcMessage(buf)); \
+        }                                                               \
     } while(0)
 
 #define CUDA_CHECK_LAST CUDA_CHECK_SUCCESS(cudaGetLastError())
