@@ -145,6 +145,12 @@ unsigned int GpuPartitioner::n_partitions() const
   return n_parts;
 }
 
+unsigned int get_partition_id(unsigned int part) const
+{
+  return part;
+}
+
+
 unsigned int GpuPartitioner::n_dofs(unsigned int part) const
 {
   return n_local_dofs[part];

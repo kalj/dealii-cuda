@@ -140,7 +140,7 @@ reinit(const Mapping<dim>                          &mapping,
 
   if(typeid(Number) == typeid(double)) {
     for(int p=0; p<partitioner_in->n_partitions(); ++p) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(p)));
       CUDA_CHECK_SUCCESS(cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte));
     }
   }
@@ -285,7 +285,7 @@ void MatrixFreeGpu<dim,Number>::free()
 
   for(int p = 0; p < partitioner->n_partitions(); ++p) {
     for(int c = 0; c < num_colors[p]; ++c) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(p)));
       if(quadrature_points[p][c] != NULL) CUDA_CHECK_SUCCESS(cudaFree(quadrature_points[p][c]));
       if(loc2glob[p][c] != NULL)          CUDA_CHECK_SUCCESS(cudaFree(loc2glob[p][c]));
       if(inv_jac[p][c] != NULL)           CUDA_CHECK_SUCCESS(cudaFree(inv_jac[p][c]));
@@ -589,7 +589,7 @@ namespace internal
     if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
       transpose_inplace(loc2glob_host,n_cells, rowlength);
     }
-    CUDA_CHECK_SUCCESS(cudaSetDevice(current_partition));
+    CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(current_partition)));
     alloc_and_copy(&data->loc2glob[current_partition][c],
                    loc2glob_host,
                    n_cells*rowlength);

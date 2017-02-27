@@ -31,7 +31,7 @@ namespace dealii
   template <typename Number>
   MultiGpuVector<Number>::DevRef& MultiGpuVector<Number>::DevRef::operator=(const Number value)
   {
-    CUDA_CHECK_SUCCESS(cudaSetDevice(owning_device));
+    CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(owning_device)));
     CUDA_CHECK_SUCCESS(cudaMemcpy(ptr,&value,sizeof(Number),
                                   cudaMemcpyHostToDevice));
     return *this;
@@ -51,7 +51,7 @@ namespace dealii
     for(int i=0; i<partitioner->n_partitions(); ++i) {
       local_sizes[i] = partitioner->n_dofs(i);
       const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&vec[i],ghosted_size*sizeof(Number)));
     }
 
@@ -72,7 +72,7 @@ namespace dealii
     for(int i=0; i<partitioner->n_partitions(); ++i) {
       local_sizes[i] = partitioner->n_dofs(i);
       const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&vec[i],ghosted_size*sizeof(Number)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(vec[i],old.vec[i],ghosted_size*sizeof(Number),
                                     cudaMemcpyDeviceToDevice));
@@ -87,7 +87,7 @@ namespace dealii
     const Number *cpu_data = &const_cast<Vector<Number>&>(old_cpu)[0];
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(vec[i],
                                     cpu_data+partitioner->local_dof_offset(i),
                                     local_sizes[i]*sizeof(Number),
@@ -108,7 +108,7 @@ namespace dealii
     const Number *cpu_data = old_cpu.data();
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(vec[i],
                                     cpu_data+partitioner->local_dof_offset(i),
                                     local_sizes[i]*sizeof(Number),
@@ -129,7 +129,7 @@ namespace dealii
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
       const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(vec[i],
                                     old.vec[i],
                                     ghosted_size*sizeof(Number),
@@ -160,7 +160,7 @@ namespace dealii
       local_sizes[i] = partitioner->n_dofs(i);
       const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
 
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&vec[i],ghosted_size*sizeof(Number)));
       internal::copy_dev_array(vec[i],old.vec[i],ghosted_size);
     }
@@ -176,7 +176,7 @@ namespace dealii
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
       const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       internal::copy_dev_array(vec[i],old.vec[i],ghosted_size);
     }
 
@@ -191,7 +191,7 @@ namespace dealii
   MultiGpuVector<Number>::~MultiGpuVector()
   {
     for(int i=0; i<vec.size(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       if(vec[i] != NULL) {
         CUDA_CHECK_SUCCESS(cudaFree(vec[i]));
       }
@@ -208,7 +208,7 @@ namespace dealii
     Number *cpu_data = &dst[0];
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(cpu_data+partitioner->local_dof_offset(i),
                                     vec[i],
                                     local_sizes[i]*sizeof(Number),
@@ -224,7 +224,7 @@ namespace dealii
 
     if(partitioner != NULL)
       for(int i=0; i<partitioner->n_partitions(); ++i) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
         if(vec[i] != NULL) {
           CUDA_CHECK_SUCCESS(cudaFree(vec[i]));
         }
@@ -258,7 +258,7 @@ namespace dealii
         // free up items to remove
         for(int i=partitioner_in->n_partitions(); i<partitioner->n_partitions(); ++i) {
           if(vec[i] != NULL) {
-            CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+            CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
             CUDA_CHECK_SUCCESS(cudaFree(vec[i]));
             vec[i] = NULL;
           }
@@ -277,7 +277,7 @@ namespace dealii
     for(int i=0; i<partitioner_in->n_partitions(); ++i) {
 
       if(local_sizes[i] != partitioner_in->n_dofs(i)) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
         if(vec[i] != NULL) {
           CUDA_CHECK_SUCCESS(cudaFree(vec[i]));
         }
@@ -299,7 +299,7 @@ namespace dealii
 
     if(!leave_elements_uninitialized)
       for(int i=0; i<partitioner->n_partitions(); ++i) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
         CUDA_CHECK_SUCCESS(cudaMemset(vec[i], 0, local_sizes[i]*sizeof(Number)));
       }
 
@@ -327,7 +327,7 @@ namespace dealii
 
     Number value;
 
-    CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+    CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
     CUDA_CHECK_SUCCESS(cudaMemcpy(&value,vec[owning_device]+local_index,sizeof(Number),
                                   cudaMemcpyDeviceToHost));
     return value;
@@ -447,7 +447,7 @@ namespace dealii
     // FIXME: probably check for compressed state, and invalidate ghosted
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       const int nblocks = 1 + (local_sizes[i]-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
       vec_sadd<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec[i],x.vec[i],a,b,local_sizes[i]);
       CUDA_CHECK_LAST;
@@ -463,7 +463,7 @@ namespace dealii
     AssertDimension(global_size, x.size());
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       const int nblocks = 1 + (local_sizes[i]-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
       vec_bin_op<Number,Binop_Multiplication> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec[i],x.vec[i],
                                                                                local_sizes[i]);
@@ -478,7 +478,7 @@ namespace dealii
     AssertDimension(global_size, x.size());
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       const int nblocks = 1 + (local_sizes[i]-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
       vec_bin_op<Number,Binop_Division> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec[i],x.vec[i],
                                                                          local_sizes[i]);
@@ -491,7 +491,7 @@ namespace dealii
   MultiGpuVector<Number>& MultiGpuVector<Number>::invert()
   {
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       const int nblocks = 1 + (local_sizes[i]-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
       vec_invert<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec[i],local_sizes[i]);
       CUDA_CHECK_LAST;
@@ -507,7 +507,7 @@ namespace dealii
     AssertDimension(global_size, x.size());
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       const int nblocks = 1 + (local_sizes[i]-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
       vec_equ<Number,Number,Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec[i],x.vec[i],a,
                                                                      local_sizes[i]);
@@ -522,7 +522,7 @@ namespace dealii
   MultiGpuVector<Number> & MultiGpuVector<Number>::operator *= (const Number a)
   {
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       const int nblocks = 1 + (local_sizes[i]-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
       vec_scale<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec[i],a,local_sizes[i]);
       CUDA_CHECK_LAST;
@@ -543,7 +543,7 @@ namespace dealii
   MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const Number a)
   {
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       const int nblocks = 1 + (local_sizes[i]-1) / (CHUNKSIZE_ELEMWISE_OP*BKSIZE_ELEMWISE_OP);
       vec_init<Number> <<<nblocks,BKSIZE_ELEMWISE_OP>>>(vec[i],a,local_sizes[i]);
       CUDA_CHECK_LAST;
@@ -683,7 +683,7 @@ namespace dealii
     std::vector<unsigned int *> res_d(partitioner->n_partitions());
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&res_d[i],sizeof(unsigned int)));
       CUDA_CHECK_SUCCESS(cudaMemset(res_d[i], 1, sizeof(unsigned int )));
 
@@ -696,7 +696,7 @@ namespace dealii
     std::vector<unsigned int> res(partitioner->n_partitions());
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(&res[i],res_d[i],sizeof(unsigned int),
                                     cudaMemcpyDeviceToHost));
 
@@ -731,7 +731,7 @@ namespace dealii
 
     std::vector<Number *> res_d(partitioner->n_partitions());
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&res_d[i],sizeof(Number)));
       CUDA_CHECK_SUCCESS(cudaMemset(res_d[i], 0, sizeof(Number)));
 
@@ -746,7 +746,7 @@ namespace dealii
     std::vector<Number> res(partitioner->n_partitions());
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(&res[i],res_d[i],sizeof(Number),
                                     cudaMemcpyDeviceToHost));
 
@@ -809,7 +809,7 @@ namespace dealii
     std::vector<Number *> res_d(partitioner->n_partitions());
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&res_d[i],sizeof(Number)));
       CUDA_CHECK_SUCCESS(cudaMemset(res_d[i], 0, sizeof(Number)));
 
@@ -823,7 +823,7 @@ namespace dealii
     std::vector<Number> res(partitioner->n_partitions());
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(&res[i],res_d[i],sizeof(Number),
                                     cudaMemcpyDeviceToHost));
 
@@ -851,14 +851,14 @@ namespace dealii
     // copy ghosted values from ghost_dofs section on other devices into
     // import_data on 'this' device
     for(int to=0; to<partitioner->n_partitions(); ++to) {
-      // CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      // CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       for(int from=0; from<partitioner->n_partitions(); ++from) {
         if(to != from) {
 
           CUDA_CHECK_SUCCESS(cudaMemcpyPeer(import_data.getData(to)+partitioner->import_data_offset(to,from),
-                                            to,
+                                            partitioner->get_partition_id(to),
                                             vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
-                                            from,
+                                            partitioner->get_partition_id(from),
                                             partitioner->n_ghost_dofs(from,to)*sizeof(Number)));
 
         }
@@ -889,14 +889,14 @@ namespace dealii
     // copy ghosted values from import_data on device `from` into
     // ghost_dofs section on device `to`
     for(int to=0; to<partitioner->n_partitions(); ++to) {
-      // CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      // CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       for(int from=0; from<partitioner->n_partitions(); ++from) {
         if(to != from) {
 
           CUDA_CHECK_SUCCESS(cudaMemcpyPeer(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
-                                            to,
+                                            partitioner->get_partition_id(to),
                                             import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
-                                            from,
+                                            partitioner->get_partition_id(from),
                                             partitioner->n_ghost_dofs(to,from)*sizeof(Number)));
 
         }
@@ -950,7 +950,7 @@ namespace dealii
       const unsigned int nblocks = 1 + (n-1) / COPY_WITH_INDEX_BKSIZE;
 
       if(n>0) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
         kernels::copy_with_indices<<<nblocks,COPY_WITH_INDEX_BKSIZE>>>(dst.getData(i),
                                                                        dst_indices.getDataRO(i),
                                                                        src.getDataRO(i),
@@ -973,7 +973,7 @@ namespace dealii
       const unsigned int nblocks = 1 + (n-1) / COPY_WITH_INDEX_BKSIZE;
 
       if(n>0) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
         kernels::copy_with_indices<<<nblocks,COPY_WITH_INDEX_BKSIZE>>>(dst.getData(i),
                                                                        dst_indices.getDataRO(i),
                                                                        src.getDataRO(i), n);
@@ -994,7 +994,7 @@ namespace dealii
       const unsigned int nblocks = 1 + (n-1) / COPY_WITH_INDEX_BKSIZE;
 
       if(n>0) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
         kernels::copy_with_indices<<<nblocks,COPY_WITH_INDEX_BKSIZE>>>(dst.getData(i),
                                                                        src.getDataRO(i),
                                                                        src_indices.getDataRO(i), n);
@@ -1015,7 +1015,7 @@ namespace dealii
       const unsigned int nblocks = 1 + (n-1) / COPY_WITH_INDEX_BKSIZE;
 
       if(n>0) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
         kernels::add_with_indices<atomic><<<nblocks,COPY_WITH_INDEX_BKSIZE>>>(dst.getData(i),
                                                                               dst_indices.getDataRO(i),
                                                                               src.getDataRO(i), n);

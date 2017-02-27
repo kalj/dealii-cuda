@@ -23,7 +23,7 @@ namespace dealii
     for(int i=0; i<partitioner->n_partitions(); ++i) {
       global_size += local_sizes[i];
 
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&values[i],local_sizes[i]*sizeof(T)));
     }
   }
@@ -35,7 +35,7 @@ namespace dealii
       global_size(other.global_size), values(other.partitioner->n_partitions())
   {
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&values[i],local_sizes[i]*sizeof(T)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(values[i],other.values[i],local_sizes[i]*sizeof(T),
                                     cudaMemcpyDeviceToDevice));
@@ -49,7 +49,7 @@ namespace dealii
       global_size(other.global_size), values(other.partitioner->n_partitions())
   {
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&values[i],local_sizes[i]*sizeof(T)));
 
       internal::copy_dev_array(values[i],other.values[i],local_sizes[i]);
@@ -78,7 +78,7 @@ namespace dealii
         // free up items to remove
         for(int i=partitioner_in->n_partitions(); i<partitioner->n_partitions(); ++i) {
           if(values[i] != NULL) {
-            CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+            CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
             CUDA_CHECK_SUCCESS(cudaFree(values[i]));
             values[i] = NULL;
           }
@@ -96,7 +96,7 @@ namespace dealii
     for(int i=0; i<partitioner_in->n_partitions(); ++i) {
 
       if(local_sizes[i] != sizes[i]) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
         if(values[i] != NULL) {
           CUDA_CHECK_SUCCESS(cudaFree(values[i]));
         }
@@ -124,7 +124,7 @@ namespace dealii
   {
     for(int i=0; i<values.size(); ++i) {
       if(values[i] != NULL) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
         CUDA_CHECK_SUCCESS(cudaFree(values[i]));
         values[i] = NULL;
       }
@@ -143,7 +143,7 @@ namespace dealii
 
     // copy data
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMalloc(&values[i],local_sizes[i]*sizeof(T)));
       internal::copy_dev_array(values[i], other.values[i], local_sizes[i]);
     }
@@ -159,7 +159,7 @@ namespace dealii
 
     // copy data
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(values[i],other.values[i],local_sizes[i]*sizeof(T),
                                     cudaMemcpyDeviceToDevice));
     }
@@ -175,7 +175,7 @@ namespace dealii
 
     unsigned int offset = 0;
     for(int i=0; i<partitioner->n_partitions(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(values[i],host_arr.data()+offset,local_sizes[i]*sizeof(T),
                                     cudaMemcpyHostToDevice));
       offset += local_sizes[i];
@@ -193,7 +193,7 @@ namespace dealii
     for(int i=0; i<partitioner->n_partitions(); ++i) {
       AssertDimension(host_arr[i].size(),local_sizes[i]);
 
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       CUDA_CHECK_SUCCESS(cudaMemcpy(values[i],host_arr[i].data(),local_sizes[i]*sizeof(T),
                                     cudaMemcpyHostToDevice));
     }

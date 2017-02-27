@@ -149,7 +149,7 @@ void ConstraintHandlerGpu<Number>::set_constrained_values(MultiGpuVector <Number
 {
   for(int i=0; i<n_partitions; ++i) {
     if(n_constrained_dofs[i] != 0) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       kernels::set_constrained_dofs<Number> <<<grid_dim[i],block_dim>>>(dst.getData(i),
                                                                         val,
                                                                         constrained_indices.getDataRO(i),
@@ -164,7 +164,7 @@ void ConstraintHandlerGpu<Number>::save_constrained_values(MultiGpuVector<Number
 {
   for(int i=0; i<n_partitions; ++i) {
     if(n_constrained_dofs[i] != 0) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       kernels::save_constrained_dofs<Number> <<<grid_dim[i],block_dim>>>(src.getData(i),
                                                                          constrained_values_src.getData(i),
                                                                          constrained_indices.getDataRO(i),
@@ -181,7 +181,7 @@ void ConstraintHandlerGpu<Number>::save_constrained_values(const MultiGpuVector 
 {
   for(int i=0; i<n_partitions; ++i) {
     if(n_constrained_dofs[i] != 0) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       kernels::save_constrained_dofs<Number> <<<grid_dim[i],block_dim>>>(dst.getDataRO(i),
                                                                          src.getData(i),
                                                                          constrained_values_dst.getData(i),
@@ -206,7 +206,7 @@ void ConstraintHandlerGpu<Number>::load_and_add_constrained_values(MultiGpuVecto
 {
   for(int i=0; i<n_partitions; ++i) {
     if(n_constrained_dofs[i] != 0) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(i));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       kernels::load_and_add_constrained_dofs<Number> <<<grid_dim[i],block_dim>>>(dst.getData(i),
                                                                                  src.getData(i),
                                                                                  constrained_values_dst.getDataRO(i),

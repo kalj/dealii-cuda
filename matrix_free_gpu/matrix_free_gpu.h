@@ -394,7 +394,7 @@ __global__ void apply_kernel_shmem (Number                          *dst,
 //   for(int p = 0; p < partitioner->n_partitions(); ++p) {
 //     for(int c = 0; c < num_colors[p]; ++c) {
 
-//       CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+//       CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(p)));
 //       apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[p][c],block_dim[p][c]>>> (dst.getData(p),
 //                                                                                  src.getDataRO(p),
 //                                                                                  loc_op, get_gpu_data(p,c));
@@ -411,7 +411,7 @@ __global__ void apply_kernel_shmem (Number                          *dst,
 //   for(int p = 0; p < partitioner->n_partitions(); ++p) {
 //     for(int c = 0; c < num_colors[p]; ++c) {
 
-//       CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+//       CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(p)));
 
 //       apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[p][c],block_dim[p][c]>>> (dst.getData(p),
 //                                                                                  loc_op, get_gpu_data(p,c));
@@ -429,7 +429,7 @@ void MatrixFreeGpu<dim,Number>::cell_loop(MultiGpuVector<Number> &dst, const Mul
     LocOp loc_op{coeff.getDataRO(p)};
     for(int c = 0; c < num_colors[p]; ++c) {
 
-      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(p)));
       apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[p][c],block_dim[p][c]>>> (dst.getData(p),
                                                                                  src.getDataRO(p),
                                                                                  loc_op, get_gpu_data(p,c));
@@ -447,7 +447,7 @@ void MatrixFreeGpu<dim,Number>::cell_loop(MultiGpuVector<Number> &dst,
     LocOp loc_op{coeff.getDataRO(p)};
     for(int c = 0; c < num_colors[p]; ++c) {
 
-      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(p)));
 
       apply_kernel_shmem<LocOp,dim,Number> <<<grid_dim[p][c],block_dim[p][c]>>> (dst.getData(p),
                                                                                  loc_op, get_gpu_data(p,c));
@@ -499,7 +499,7 @@ void MatrixFreeGpu<dim,Number>::evaluate_on_cells(MultiGpuList<Number> &vec) con
       const dim3 grid_dim = dim3(num_blocks_x,num_blocks_y);
       const dim3 block_dim = dim3(BKSIZE_COEFF_EVAL);
 
-      CUDA_CHECK_SUCCESS(cudaSetDevice(p));
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(p)));
       cell_eval_kernel<dim,Number,Op> <<<grid_dim,block_dim>>> (vec.getData(p) + rowstart[p][c],
                                                                 get_gpu_data(p,c));
       CUDA_CHECK_LAST;

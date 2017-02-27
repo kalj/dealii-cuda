@@ -24,6 +24,8 @@ namespace dealii
 
     unsigned int n_partitions() const;
 
+    unsigned int get_partition_id(unsigned int part) const;
+
     unsigned int n_global_dofs() const;
 
     unsigned int n_dofs(unsigned int part) const;
