@@ -855,11 +855,18 @@ namespace dealii
       for(int from=0; from<partitioner->n_partitions(); ++from) {
         if(to != from) {
 
+#ifndef FAKE_MULTI_GPU
           CUDA_CHECK_SUCCESS(cudaMemcpyPeer(import_data.getData(to)+partitioner->import_data_offset(to,from),
                                             partitioner->get_partition_id(to),
                                             vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
                                             partitioner->get_partition_id(from),
                                             partitioner->n_ghost_dofs(from,to)*sizeof(Number)));
+#else
+          CUDA_CHECK_SUCCESS(cudaMemcpy(import_data.getData(to)+partitioner->import_data_offset(to,from),
+                                        vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
+                                        partitioner->n_ghost_dofs(from,to)*sizeof(Number),
+                                        cudaMemcpyDeviceToDevice));
+#endif
 
         }
       }
@@ -893,12 +900,18 @@ namespace dealii
       for(int from=0; from<partitioner->n_partitions(); ++from) {
         if(to != from) {
 
+#ifndef FAKE_MULTI_GPU
           CUDA_CHECK_SUCCESS(cudaMemcpyPeer(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
                                             partitioner->get_partition_id(to),
                                             import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
                                             partitioner->get_partition_id(from),
                                             partitioner->n_ghost_dofs(to,from)*sizeof(Number)));
-
+#else
+          CUDA_CHECK_SUCCESS(cudaMemcpy(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
+                                        import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
+                                        partitioner->n_ghost_dofs(to,from)*sizeof(Number),
+                                        cudaMemcpyDeviceToDevice));
+#endif
         }
       }
     }

@@ -147,7 +147,11 @@ unsigned int GpuPartitioner::n_partitions() const
 
 unsigned int get_partition_id(unsigned int part) const
 {
+#ifdef FAKE_MULTI_GPU
+  return 0;
+#else
   return part;
+#endif
 }
 
 
