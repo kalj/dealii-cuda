@@ -66,7 +66,7 @@ private:
   Triangulation<dim>                    triangulation;
   FE_Q<dim>                             fe;
   DoFHandler<dim>                       dof_handler;
-  std::shared_ptr<GpuPartitioner>       partitioner;
+  std::shared_ptr<const GpuPartitioner>       partitioner;
   std::vector<ConstraintMatrix>         partition_constraints;
   ConstraintMatrix                      global_constraints;
 
@@ -91,8 +91,7 @@ LaplaceProblem<dim,fe_degree>::LaplaceProblem ()
   :
   fe (fe_degree),
   dof_handler (triangulation),
-  time_details (std::cout, false),
-  partitioner(new GpuPartitioner)
+  time_details (std::cout, false)
 {}
 
 
@@ -109,7 +108,9 @@ void LaplaceProblem<dim,fe_degree>::setup_system (unsigned int n_partitions)
 
   dof_handler.distribute_dofs (fe);
 
-  partitioner->reinit(dof_handler,n_partitions);
+  // wipe old one, and create new, so that other shared pointers still point to the old one!
+
+  partitioner.reset(new GpuPartitioner(dof_handler,n_partitions));
 
   if(!QUIET) {
     std::cout << "Number of degrees of freedom: "

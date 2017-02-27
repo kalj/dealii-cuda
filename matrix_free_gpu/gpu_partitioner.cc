@@ -8,6 +8,7 @@
 using namespace dealii;
 
 GpuPartitioner::GpuPartitioner()
+  : n_parts(0), n_cells_tot(0), n_dofs_tot(0)
 {}
 
 template <int dim>
@@ -193,7 +194,10 @@ unsigned int GpuPartitioner::local_dof_offset(unsigned int part) const
 
 bool GpuPartitioner::is_compatible(const GpuPartitioner &other) const
 {
-  return this == &other;
+  bool comp = true;
+  comp = comp && n_parts == other.n_parts;
+
+  return comp;
 }
 
 unsigned int GpuPartitioner::dof_owner(unsigned int global_index) const

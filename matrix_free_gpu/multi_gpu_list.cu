@@ -9,7 +9,8 @@ namespace dealii
 
   template <typename T>
   MultiGpuList<T>::MultiGpuList()
-    : global_size(0)
+    : global_size(0),
+      partitioner(new GpuPartitioner)
   {}
 
   template <typename T>

@@ -62,10 +62,7 @@ namespace dealii
     bool vector_is_compressed;
   public:
     // constructors et al.
-    MultiGpuVector()
-      : global_size(0),
-        vector_is_ghosted(false),
-        vector_is_compressed(true) {}
+    MultiGpuVector();
 
     MultiGpuVector(const std::shared_ptr<const GpuPartitioner> &partitioner_in);
 

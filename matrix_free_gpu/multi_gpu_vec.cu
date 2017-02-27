@@ -29,6 +29,13 @@ namespace dealii
   //=============================================================================
 
   template <typename Number>
+  MultiGpuVector<Number>::MultiGpuVector()
+    : global_size(0),
+      vector_is_ghosted(false),
+      vector_is_compressed(true),
+      partitioner(new GpuPartitioner) {}
+
+  template <typename Number>
   MultiGpuVector<Number>::DevRef& MultiGpuVector<Number>::DevRef::operator=(const Number value)
   {
     CUDA_CHECK_SUCCESS(cudaSetDevice(owning_device));
@@ -120,8 +127,12 @@ namespace dealii
   template <typename Number>
   MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const MultiGpuVector<Number>& old)
   {
-    AssertDimension(global_size, old.size());
-    // FIXME: also check for compatible partitioners
+    // AssertDimension(global_size, old.size());
+
+    if( partitioner != old.partitioner ||
+        !partitioner->is_compatible(*old.partitioner))
+      reinit(old.partitioner,true);
+
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
       const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
@@ -144,8 +155,9 @@ namespace dealii
   template <typename OtherNumber>
   MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const MultiGpuVector<OtherNumber>& old)
   {
-    AssertDimension(global_size, old.size());
-    // FIXME: also check for compatible partitioners
+    if( partitioner != old.partitioner ||
+        !partitioner->is_compatible(*old.partitioner))
+      reinit(old.partitioner,true);
 
     for(int i=0; i<partitioner->n_partitions(); ++i) {
       const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
