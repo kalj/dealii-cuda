@@ -31,7 +31,7 @@ namespace dealii
   template <typename Number>
   MultiGpuVector<Number>::DevRef& MultiGpuVector<Number>::DevRef::operator=(const Number value)
   {
-    CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(owning_device)));
+    CUDA_CHECK_SUCCESS(cudaSetDevice(owning_device));
     CUDA_CHECK_SUCCESS(cudaMemcpy(ptr,&value,sizeof(Number),
                                   cudaMemcpyHostToDevice));
     return *this;
@@ -159,7 +159,8 @@ namespace dealii
     return *this;
   }
 
-      template <typename Number>
+
+  template <typename Number>
   MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const Vector<Number>& old_cpu)
   {
     AssertDimension(global_size, old_cpu.size());
@@ -343,9 +344,10 @@ namespace dealii
   {
     // FIXME: probably check for compressed / invalidate ghosted state
 
-    const int owning_device = partitioner->dof_owner(i);
-    const int local_index = partitioner->local_index(owning_device,i);
-    return MultiGpuVector<Number>::DevRef(vec[owning_device]+local_index,owning_device);
+    const int owning_part = partitioner->dof_owner(i);
+    const int local_index = partitioner->local_index(owning_part,i);
+    return MultiGpuVector<Number>::DevRef(vec[owning_part]+local_index,
+                                          partitioner->get_partition_id(owning_part));
   }
 
 
@@ -967,7 +969,7 @@ namespace dealii
       const unsigned int nblocks = 1 + (n-1) / COPY_WITH_INDEX_BKSIZE;
 
       if(n>0) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(dst.get_partitioner()->get_partition_id(i)));
         kernels::copy_with_indices<<<nblocks,COPY_WITH_INDEX_BKSIZE>>>(dst.getData(i),
                                                                        dst_indices.getDataRO(i),
                                                                        src.getDataRO(i),
@@ -990,7 +992,7 @@ namespace dealii
       const unsigned int nblocks = 1 + (n-1) / COPY_WITH_INDEX_BKSIZE;
 
       if(n>0) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(dst.get_partitioner()->get_partition_id(i)));
         kernels::copy_with_indices<<<nblocks,COPY_WITH_INDEX_BKSIZE>>>(dst.getData(i),
                                                                        dst_indices.getDataRO(i),
                                                                        src.getDataRO(i), n);
@@ -1011,7 +1013,7 @@ namespace dealii
       const unsigned int nblocks = 1 + (n-1) / COPY_WITH_INDEX_BKSIZE;
 
       if(n>0) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(src.get_partitioner()->get_partition_id(i)));
         kernels::copy_with_indices<<<nblocks,COPY_WITH_INDEX_BKSIZE>>>(dst.getData(i),
                                                                        src.getDataRO(i),
                                                                        src_indices.getDataRO(i), n);
@@ -1032,7 +1034,7 @@ namespace dealii
       const unsigned int nblocks = 1 + (n-1) / COPY_WITH_INDEX_BKSIZE;
 
       if(n>0) {
-        CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
+        CUDA_CHECK_SUCCESS(cudaSetDevice(dst.get_partitioner()->get_partition_id(i)));
         kernels::add_with_indices<atomic><<<nblocks,COPY_WITH_INDEX_BKSIZE>>>(dst.getData(i),
                                                                               dst_indices.getDataRO(i),
                                                                               src.getDataRO(i), n);

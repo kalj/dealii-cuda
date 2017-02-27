@@ -47,9 +47,9 @@ namespace kernels
 template <typename Number>
 void ConstraintHandlerGpu<Number>::reinit_kernel_parameters()
 {
-  grid_dim.resize(n_partitions);
+  grid_dim.resize(partitioner->n_partitions());
 
-  for(int part=0; part<n_partitions; ++part) {
+  for(int part=0; part<partitioner->n_partitions(); ++part) {
     const unsigned int n_constrained_dofs = constrained_indices.local_size(part);
     const unsigned int num_blocks = ceil(n_constrained_dofs / float(CONSTRAINT_OPS_BKSIZE));
     const unsigned int x_num_blocks = round(sqrt(num_blocks)); // get closest to even square.
@@ -63,14 +63,14 @@ void ConstraintHandlerGpu<Number>::reinit_kernel_parameters()
 template <typename Number>
 void ConstraintHandlerGpu<Number>
 ::reinit(const std::vector<ConstraintMatrix> &constraints,
-         const std::shared_ptr<const GpuPartitioner> &partitioner)
+         const std::shared_ptr<const GpuPartitioner> &partitioner_in)
 {
-  n_partitions = partitioner->n_partitions();
-  n_constrained_dofs.resize(n_partitions);
+  partitioner = partitioner_in;
+  n_constrained_dofs.resize( partitioner->n_partitions());
 
-  std::vector<std::vector<unsigned int> > constrained_dofs_host(n_partitions);
+  std::vector<std::vector<unsigned int> > constrained_dofs_host(partitioner->n_partitions());
 
-  for(int part=0; part<n_partitions; ++part) {
+  for(int part=0; part<partitioner->n_partitions(); ++part) {
 
     n_constrained_dofs[part] = constraints[part].n_constraints();
 
@@ -103,17 +103,17 @@ void ConstraintHandlerGpu<Number>
 template <typename Number>
 void ConstraintHandlerGpu<Number>
 ::reinit(const std::vector<MGConstrainedDoFs> &mg_constrained_dofs,
-         const std::shared_ptr<const GpuPartitioner> &partitioner,
+         const std::shared_ptr<const GpuPartitioner> &partitioner_in,
          const unsigned int        level)
 {
-  n_partitions = partitioner->n_partitions();
-  n_constrained_dofs.resize(n_partitions);
+  partitioner = partitioner_in;
+  n_constrained_dofs.resize(partitioner->n_partitions());
 
-  std::vector<std::vector<unsigned int> > constrained_indices_host(n_partitions);
-  std::vector<std::vector<unsigned int> > edge_indices_host(n_partitions);
-  std::vector<unsigned int>               n_edge_dofs(n_partitions);
+  std::vector<std::vector<unsigned int> > constrained_indices_host(partitioner->n_partitions());
+  std::vector<std::vector<unsigned int> > edge_indices_host(partitioner->n_partitions());
+  std::vector<unsigned int>               n_edge_dofs(partitioner->n_partitions());
 
-  for(int part=0; part<n_partitions; ++part) {
+  for(int part=0; part<partitioner->n_partitions(); ++part) {
 
     IndexSet index_set;
 
@@ -147,7 +147,7 @@ template <typename Number>
 void ConstraintHandlerGpu<Number>::set_constrained_values(MultiGpuVector <Number> &dst,
                                                           Number val) const
 {
-  for(int i=0; i<n_partitions; ++i) {
+  for(int i=0; i<partitioner->n_partitions(); ++i) {
     if(n_constrained_dofs[i] != 0) {
       CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       kernels::set_constrained_dofs<Number> <<<grid_dim[i],block_dim>>>(dst.getData(i),
@@ -162,7 +162,7 @@ void ConstraintHandlerGpu<Number>::set_constrained_values(MultiGpuVector <Number
 template <typename Number>
 void ConstraintHandlerGpu<Number>::save_constrained_values(MultiGpuVector<Number>        &src)
 {
-  for(int i=0; i<n_partitions; ++i) {
+  for(int i=0; i<partitioner->n_partitions(); ++i) {
     if(n_constrained_dofs[i] != 0) {
       CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       kernels::save_constrained_dofs<Number> <<<grid_dim[i],block_dim>>>(src.getData(i),
@@ -179,7 +179,7 @@ template <typename Number>
 void ConstraintHandlerGpu<Number>::save_constrained_values(const MultiGpuVector <Number> &dst,
                                                            MultiGpuVector<Number>        &src)
 {
-  for(int i=0; i<n_partitions; ++i) {
+  for(int i=0; i<partitioner->n_partitions(); ++i) {
     if(n_constrained_dofs[i] != 0) {
       CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       kernels::save_constrained_dofs<Number> <<<grid_dim[i],block_dim>>>(dst.getDataRO(i),
@@ -204,7 +204,7 @@ template <typename Number>
 void ConstraintHandlerGpu<Number>::load_and_add_constrained_values(MultiGpuVector <Number>          &dst,
                                                                    MultiGpuVector<Number>           &src) const
 {
-  for(int i=0; i<n_partitions; ++i) {
+  for(int i=0; i<partitioner->n_partitions(); ++i) {
     if(n_constrained_dofs[i] != 0) {
       CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
       kernels::load_and_add_constrained_dofs<Number> <<<grid_dim[i],block_dim>>>(dst.getData(i),

@@ -583,13 +583,14 @@ namespace internal
   template <int dim, typename Number>
   void ReinitHelper<dim,Number>::alloc_and_copy_arrays(const unsigned int c)
   {
-    const unsigned n_cells = data->n_cells[current_partition][c];
+    const unsigned int n_cells = data->n_cells[current_partition][c];
+    const unsigned int current_device = data->partitioner->get_partition_id(current_partition);
 
     // local-to-global mapping
     if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
       transpose_inplace(loc2glob_host,n_cells, rowlength);
     }
-    CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(current_partition)));
+    CUDA_CHECK_SUCCESS(cudaSetDevice(current_device));
     alloc_and_copy(&data->loc2glob[current_partition][c],
                    loc2glob_host,
                    n_cells*rowlength);
@@ -599,6 +600,7 @@ namespace internal
       if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
         transpose_inplace(quad_points_host,n_cells, rowlength);
       }
+      CUDA_CHECK_SUCCESS(cudaSetDevice(current_device));
       alloc_and_copy(&data->quadrature_points[current_partition][c],
                      quad_points_host,
                      n_cells*rowlength);
@@ -609,6 +611,7 @@ namespace internal
       if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
         transpose_inplace(JxW_host,n_cells, rowlength);
       }
+      CUDA_CHECK_SUCCESS(cudaSetDevice(current_device));
       alloc_and_copy(&data->JxW[current_partition][c],
                      JxW_host,
                      n_cells*rowlength);
@@ -632,11 +635,13 @@ namespace internal
       if(data->parallelization_scheme == MatrixFreeGpu<dim,Number>::scheme_par_over_elems) {
         transpose_inplace(inv_jac_host,n_cells*dim*dim, rowlength);
       }
+      CUDA_CHECK_SUCCESS(cudaSetDevice(current_device));
       alloc_and_copy(&data->inv_jac[current_partition][c], inv_jac_host,
                      n_cells*dim*dim*rowlength);
     }
 
 #ifdef MATRIX_FREE_HANGING_NODES
+    CUDA_CHECK_SUCCESS(cudaSetDevice(current_device));
     alloc_and_copy(&data->constraint_mask[current_partition][c],constraint_mask_host,n_cells);
 #endif
   }

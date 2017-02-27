@@ -44,6 +44,8 @@ public:
 private:
   void reinit_kernel_parameters();
 
+  std::shared_ptr<const GpuPartitioner> partitioner;
+
   unsigned int                          n_partitions;
 
   std::vector<unsigned int>             n_constrained_dofs;
