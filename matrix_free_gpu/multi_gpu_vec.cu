@@ -298,8 +298,11 @@ namespace dealii
         if(vec[i] != NULL) {
           CUDA_CHECK_SUCCESS(cudaFree(vec[i]));
         }
-        CUDA_CHECK_SUCCESS(cudaMalloc(&vec[i],partitioner_in->n_dofs(i)*sizeof(Number)));
+
         local_sizes[i] = partitioner_in->n_dofs(i);
+        const unsigned int ghosted_size = local_sizes[i] + partitioner_in->n_ghost_dofs_tot(i);
+
+        CUDA_CHECK_SUCCESS(cudaMalloc(&vec[i],ghosted_size*sizeof(Number)));
       }
     }
 

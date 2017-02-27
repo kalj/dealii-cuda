@@ -203,18 +203,17 @@ bool GpuPartitioner::is_compatible(const GpuPartitioner &other) const
 unsigned int GpuPartitioner::dof_owner(unsigned int global_index) const
 {
   unsigned int owner = 0;
-  for(int i=i; i< n_parts; ++i) {
+  for(int i=1; i< n_parts; ++i) {
     if(global_index >= local_dof_offsets[i])
       owner = i;
   }
-
   return owner;
 }
 
 unsigned int GpuPartitioner::cell_owner(unsigned int cell_index) const
 {
   unsigned int owner = 0;
-  for(int i=i; i< n_parts; ++i) {
+  for(int i=1; i< n_parts; ++i) {
     if(cell_index >= local_cell_offsets[i])
       owner = i;
   }
