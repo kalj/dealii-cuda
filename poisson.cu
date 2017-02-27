@@ -276,14 +276,14 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 {
   Timer time;
 
-  // typedef PreconditionChebyshev<SystemMatrixType,VectorType > PreconditionType;
+  typedef PreconditionChebyshev<SystemMatrixType,VectorType > PreconditionType;
 
-  // PreconditionType preconditioner;
-  // typename PreconditionType::AdditionalData additional_data;
+  PreconditionType preconditioner;
+  typename PreconditionType::AdditionalData additional_data;
 
-  // additional_data.preconditioner=system_matrix.get_diagonal_inverse();
+  additional_data.preconditioner=system_matrix.get_diagonal_inverse();
 
-  // preconditioner.initialize(system_matrix,additional_data);
+  preconditioner.initialize(system_matrix,additional_data);
 
 
   SolverControl           solver_control (10000, 1e-12*system_rhs.l2_norm());
@@ -299,8 +299,7 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   time.reset();
   time.start();
   cg.solve (system_matrix, solution_update, system_rhs,
-            // preconditioner);
-            PreconditionIdentity());
+            preconditioner);
 
   time.stop();
 
