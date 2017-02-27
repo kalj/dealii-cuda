@@ -79,7 +79,87 @@ namespace dealii
     }
   }
 
+
+  // copy constructor from vector based on other number type
   template <typename Number>
+  template <typename OtherNumber>
+  MultiGpuVector<Number>::MultiGpuVector(const MultiGpuVector<OtherNumber>& old)
+    : vec(old.partitioner->n_partitions()),
+      import_data(old.import_data),
+      import_indices(old.import_indices),
+      local_sizes(old.partitioner->n_partitions()),
+      global_size(old.partitioner->n_global_dofs()),
+      partitioner(old.partitioner),
+      vector_is_ghosted(old.vector_is_ghosted),
+      vector_is_compressed(old.vector_is_compressed)
+  {
+
+    for(int i=0; i<partitioner->n_partitions(); ++i) {
+      local_sizes[i] = partitioner->n_dofs(i);
+      const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
+
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
+      CUDA_CHECK_SUCCESS(cudaMalloc(&vec[i],ghosted_size*sizeof(Number)));
+      internal::copy_dev_array(vec[i],old.vec[i],ghosted_size);
+    }
+  }
+
+  template <typename Number>
+  MultiGpuVector<Number>::~MultiGpuVector()
+  {
+    for(int i=0; i<vec.size(); ++i) {
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
+      if(vec[i] != NULL) {
+        CUDA_CHECK_SUCCESS(cudaFree(vec[i]));
+      }
+    }
+  }
+
+
+
+  template <typename Number>
+  MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const MultiGpuVector<Number>& old)
+  {
+    AssertDimension(global_size, old.size());
+    // FIXME: also check for compatible partitioners
+
+    for(int i=0; i<partitioner->n_partitions(); ++i) {
+      const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
+      CUDA_CHECK_SUCCESS(cudaMemcpy(vec[i],
+                                    old.vec[i],
+                                    ghosted_size*sizeof(Number),
+                                    cudaMemcpyDeviceToDevice));
+    }
+
+    vector_is_ghosted = old.vector_is_ghosted;
+    vector_is_ghosted = old.vector_is_compressed;
+
+    return *this;
+  }
+
+
+  // same for assignment
+  template <typename Number>
+  template <typename OtherNumber>
+  MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const MultiGpuVector<OtherNumber>& old)
+  {
+    AssertDimension(global_size, old.size());
+    // FIXME: also check for compatible partitioners
+
+    for(int i=0; i<partitioner->n_partitions(); ++i) {
+      const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
+      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
+      internal::copy_dev_array(vec[i],old.vec[i],ghosted_size);
+    }
+
+    vector_is_ghosted = old.vector_is_ghosted;
+    vector_is_compressed = old.vector_is_compressed;
+
+    return *this;
+  }
+
+      template <typename Number>
   MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const Vector<Number>& old_cpu)
   {
     AssertDimension(global_size, old_cpu.size());
@@ -121,82 +201,6 @@ namespace dealii
     return *this;
   }
 
-  template <typename Number>
-  MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const MultiGpuVector<Number>& old)
-  {
-    AssertDimension(global_size, old.size());
-    // FIXME: also check for compatible partitioners
-
-    for(int i=0; i<partitioner->n_partitions(); ++i) {
-      const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
-      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
-      CUDA_CHECK_SUCCESS(cudaMemcpy(vec[i],
-                                    old.vec[i],
-                                    ghosted_size*sizeof(Number),
-                                    cudaMemcpyDeviceToDevice));
-    }
-
-    vector_is_ghosted = old.vector_is_ghosted;
-    vector_is_ghosted = old.vector_is_compressed;
-
-    return *this;
-  }
-
-  // copy constructor from vector based on other number type
-  template <typename Number>
-  template <typename OtherNumber>
-  MultiGpuVector<Number>::MultiGpuVector(const MultiGpuVector<OtherNumber>& old)
-    : vec(old.partitioner->n_partitions()),
-      import_data(old.import_data),
-      import_indices(old.import_indices),
-      local_sizes(old.partitioner->n_partitions()),
-      global_size(old.partitioner->n_global_dofs()),
-      partitioner(old.partitioner),
-      vector_is_ghosted(old.vector_is_ghosted),
-      vector_is_compressed(old.vector_is_compressed)
-  {
-
-    for(int i=0; i<partitioner->n_partitions(); ++i) {
-      local_sizes[i] = partitioner->n_dofs(i);
-      const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
-
-      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
-      CUDA_CHECK_SUCCESS(cudaMalloc(&vec[i],ghosted_size*sizeof(Number)));
-      internal::copy_dev_array(vec[i],old.vec[i],ghosted_size);
-    }
-  }
-
-  // same for assignment
-  template <typename Number>
-  template <typename OtherNumber>
-  MultiGpuVector<Number>& MultiGpuVector<Number>::operator=(const MultiGpuVector<OtherNumber>& old)
-  {
-    AssertDimension(global_size, old.size());
-    // FIXME: also check for compatible partitioners
-
-    for(int i=0; i<partitioner->n_partitions(); ++i) {
-      const unsigned int ghosted_size = local_sizes[i] + partitioner->n_ghost_dofs_tot(i);
-      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
-      internal::copy_dev_array(vec[i],old.vec[i],ghosted_size);
-    }
-
-    vector_is_ghosted = old.vector_is_ghosted;
-    vector_is_compressed = old.vector_is_compressed;
-
-    return *this;
-  }
-
-
-  template <typename Number>
-  MultiGpuVector<Number>::~MultiGpuVector()
-  {
-    for(int i=0; i<vec.size(); ++i) {
-      CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
-      if(vec[i] != NULL) {
-        CUDA_CHECK_SUCCESS(cudaFree(vec[i]));
-      }
-    }
-  }
 
   template <typename Number>
   void MultiGpuVector<Number>::copyToHost(Vector<Number>& dst) const
