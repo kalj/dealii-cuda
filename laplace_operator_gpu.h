@@ -305,15 +305,20 @@ namespace dealii
     // and output, and set input values to zero to avoid polluting output.
     constraint_handler.save_constrained_values(dst, const_cast<VectorType&>(src));
 
+    dst.update_ghost_values();
+    src.update_ghost_values();
     // apply laplace operator
     // LocalOperator<dim,fe_degree,Number> loc_op{coefficient.getDataRO()};
     // data.cell_loop (dst,src,loc_op);
 
     data.template cell_loop<LocalOperator<dim,fe_degree,Number> >  (dst,src,coefficient);
 
+    dst.compress();
+
     // overwrite Dirichlet values in output with correct values, and reset input
     // to possibly non-zero values.
     constraint_handler.load_and_add_constrained_values(dst, const_cast<VectorType&>(src));
+
   }
 
 
