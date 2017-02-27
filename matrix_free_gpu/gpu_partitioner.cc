@@ -160,7 +160,7 @@ void GpuPartitioner::extract_locally_relevant_dofs(const unsigned int part,
                                                    IndexSet &index_set) const
 {
   index_set.clear();
-  index_set.set_size (n_local_dofs[part]);
+  index_set.set_size (n_dofs_tot);
 
   index_set.add_range (local_dof_offsets[part],
                        local_dof_offsets[part]+n_local_dofs[part]);
@@ -212,17 +212,25 @@ unsigned int GpuPartitioner::cell_owner(unsigned int cell_index) const
 unsigned int GpuPartitioner::local_index(unsigned int part,
                                          unsigned int global_index) const
 {
-  if(dof_owner(global_index) == part)
-    return global_index - local_dof_offsets[part];
+  const unsigned int owner = dof_owner(global_index);
+  unsigned int l = numbers::invalid_unsigned_int;
+  if(owner == part)
+    l = global_index - local_dof_offsets[part];
   else {
-    for(int i = 0; i < n_ghost_dofs_tot(part); ++i) {
-      if(ghost_dof_indices[part][i] == global_index) {
-        return n_local_dofs[part]+i;
+
+    const unsigned int offset = ghost_dofs_offset(part,owner);
+    for(int i = 0; i < n_ghost_dofs_matrix[part][owner]; ++i) {
+      if(ghost_dof_indices[part][offset+i] == global_index) {
+        l = n_local_dofs[part]+offset+i;
+        break;
       }
     }
-    // we went through all ghost dofs without matches
-    Assert(false,ExcInternalError("No such dof index found in current partition and its ghosts"));
   }
+  // we went through all ghost dofs without matches
+  Assert(l != numbers::invalid_unsigned_int,
+         ExcInternalError("No such dof index found in current partition and its ghosts"));
+
+  return l;
 }
 
 template <int dim>

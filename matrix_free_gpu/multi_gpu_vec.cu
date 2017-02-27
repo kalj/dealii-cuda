@@ -859,7 +859,7 @@ namespace dealii
                                             to,
                                             vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
                                             from,
-                                            partitioner->n_ghost_dofs(from,to)));
+                                            partitioner->n_ghost_dofs(from,to)*sizeof(Number)));
 
         }
       }
@@ -892,11 +892,12 @@ namespace dealii
       // CUDA_CHECK_SUCCESS(cudaSetDevice(i));
       for(int from=0; from<partitioner->n_partitions(); ++from) {
         if(to != from) {
+
           CUDA_CHECK_SUCCESS(cudaMemcpyPeer(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
                                             to,
                                             import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
                                             from,
-                                            partitioner->n_ghost_dofs(to,from)));
+                                            partitioner->n_ghost_dofs(to,from)*sizeof(Number)));
 
         }
       }

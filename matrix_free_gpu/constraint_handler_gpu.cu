@@ -78,7 +78,8 @@ void ConstraintHandlerGpu<Number>
 
     unsigned int iconstr = 0;
     for(unsigned int i=0; i<partitioner->n_dofs(part); i++) {
-      if(constraints[part].is_constrained(i)) {
+      unsigned int global_i = partitioner->local_dof_offset(part)+i;
+      if(constraints[part].is_constrained(global_i)) {
         constrained_dofs_host[part][iconstr] = i;
         iconstr++;
       }
