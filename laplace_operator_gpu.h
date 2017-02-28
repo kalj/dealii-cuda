@@ -434,6 +434,8 @@ namespace dealii
     // data.cell_loop (inv_diag,diag_loc_op);
     data.template cell_loop<DiagonalLocalOperator<dim,fe_degree,Number> > (inv_diag,coefficient);
 
+    inv_diag.compress();
+
     constraint_handler.set_constrained_values(inv_diag,1.0);
 
     inv_diag.invert();
