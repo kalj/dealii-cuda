@@ -700,7 +700,7 @@ MGTransferMatrixFreeGpu<dim,Number>::copy_to_mg (const DoFHandler<dim,spacedim> 
                                                  MGLevelObject<GpuVector<Number> > &dst,
                                                  const GpuVector<OtherNumber>      &src) const
 {
-  AssertIndexRange(dst.max_level(), mg_dof_handler.get_triangulation().n_global_levels());
+  AssertIndexRange(dst.max_level(), mg_dof.get_triangulation().n_global_levels());
   AssertIndexRange(dst.min_level(), dst.max_level()+1);
 
   for (unsigned int level=dst.min_level();
@@ -744,7 +744,7 @@ MGTransferMatrixFreeGpu<dim,Number>::copy_from_mg (const DoFHandler<dim,spacedim
                                                    GpuVector<OtherNumber>                 &dst,
                                                    const MGLevelObject<GpuVector<Number>> &src) const
 {
-  AssertIndexRange(src.max_level(), mg_dof_handler.get_triangulation().n_global_levels());
+  AssertIndexRange(src.max_level(), mg_dof.get_triangulation().n_global_levels());
   AssertIndexRange(src.min_level(), src.max_level()+1);
 
   if (perform_plain_copy)
