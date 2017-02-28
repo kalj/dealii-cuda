@@ -192,11 +192,17 @@ reinit(const Mapping<dim>                          &mapping,
   unsigned int size_shape_values = n_dofs_1d*n_q_points_1d*sizeof(Number);
   // test if  shape_info.shape_values_number.size() == (fe_degree+1)*num_quad_1d
 
-  ConstantMemoryWrapper<Number>::copy_to_shape_values(&shape_info.shape_values_number[0],
-                                                      size_shape_values);
-  if(update_flags & update_gradients) {
-    ConstantMemoryWrapper<Number>::copy_to_shape_gradient(&shape_info.shape_gradient_number[0],
-                                                          size_shape_values);
+  partitioner = partitioner_in;
+
+  for(int p=0; p<partitioner->n_partitions(); ++p) {
+
+    CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(p)));
+    ConstantMemoryWrapper<Number>::copy_to_shape_values(&shape_info.shape_values_number[0],
+                                                        size_shape_values);
+    if(update_flags & update_gradients) {
+      ConstantMemoryWrapper<Number>::copy_to_shape_gradient(&shape_info.shape_gradient_number[0],
+                                                            size_shape_values);
+    }
   }
 
   // Setup number of cells per CUDA thread block
@@ -206,7 +212,6 @@ reinit(const Mapping<dim>                          &mapping,
   // cell-specific stuff (indices, JxW, inverse jacobian, quadrature points, etc)
   //---------------------------------------------------------------------------
 
-  partitioner = partitioner_in;
 
   n_cells.resize(partitioner->n_partitions());
   num_colors.resize(partitioner->n_partitions());
