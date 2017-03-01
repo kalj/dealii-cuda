@@ -37,8 +37,8 @@ IF(${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION} VERSION_LESS 3.3)
   SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++11)
 ENDIF()
 
-MESSAGE("-- Setting up for Compute Capability 3.5")
-SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch=sm_35)
+MESSAGE("-- Setting up for Compute Capability 6.0")
+SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch=sm_60)
 
 SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -lineinfo)
 
