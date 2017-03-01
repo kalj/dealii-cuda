@@ -131,6 +131,7 @@ namespace dealii
     void reinit (const MultiGpuVector<Number>&,
                  bool leave_elements_uninitialized = false);
 
+    void swap(MultiGpuVector<Number> &other);
 
     // scalar product
     Number operator * (const MultiGpuVector<Number> &v) const;
@@ -193,17 +194,6 @@ namespace dealii
                const bool scientific = true, const bool across = true) const {
       toVector().print(out,precision,scientific,across);
     }
-
-    void swap(MultiGpuVector<Number> &other);
- // {
- //      Number * tmp_vec = vec_dev;
- //      unsigned int tmp_size = _size;
- //      vec_dev = other.vec_dev;
- //      _size = other._size;
-
- //      other.vec_dev = tmp_vec;
- //      other._size = tmp_size;
- //    }
 
     IndexSet locally_owned_elements() const { return complete_index_set(size()); }
 

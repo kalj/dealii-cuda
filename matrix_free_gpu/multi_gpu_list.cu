@@ -136,6 +136,16 @@ namespace dealii
   }
 
   template <typename T>
+  void MultiGpuList<T>::swap(MultiGpuList<T> &other)
+  {
+    local_sizes.swap(other.local_sizes);
+    values.swap(other.values);
+    partitioner.swap(other.partitioner);
+
+    std::swap(global_size,other.global_size);
+  }
+
+  template <typename T>
   template <typename T2>
   MultiGpuList<T>& MultiGpuList<T>::operator=(const MultiGpuList<T2> &other)
   {

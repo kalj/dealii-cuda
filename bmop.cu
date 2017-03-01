@@ -33,9 +33,9 @@
 
 
 #include "matrix_free_gpu/defs.h"
-#include "matrix_free_gpu/gpu_vec.h"
+#include "matrix_free_gpu/multi_gpu_vec.h"
 #include "matrix_free_gpu/cuda_utils.cuh"
-#include "matrix_free_gpu/gpu_array.cuh"
+#include "matrix_free_gpu/gpu_partitioner.h"
 
 #include "laplace_operator_gpu.h"
 #include "bmop_common.h"
@@ -75,20 +75,22 @@ public:
   void run (int nref);
 
 private:
-  void setup_system ();
+  void setup_system (int n_partitions);
   void solve ();
 
-  Triangulation<dim>               triangulation;
-  FE_Q<dim>                        fe;
-  DoFHandler<dim>                  dof_handler;
-  ConstraintMatrix                 constraints;
+  Triangulation<dim>                    triangulation;
+  FE_Q<dim>                             fe;
+  DoFHandler<dim>                       dof_handler;
+  std::shared_ptr<const GpuPartitioner> partitioner;
+  std::vector<ConstraintMatrix>         partition_constraints;
+  ConstraintMatrix                      global_constraints;
 
   typedef LaplaceOperatorGpu<dim,fe_degree,number> SystemMatrixType;
 
   SystemMatrixType                 system_matrix;
 
-  GpuVector<number>                src;
-  GpuVector<number>                dst;
+  MultiGpuVector<number>                src;
+  MultiGpuVector<number>                dst;
 
   ConditionalOStream               time_details;
   unsigned int                     n_iterations;
@@ -109,24 +111,58 @@ LaplaceProblem<dim,fe_degree>::LaplaceProblem ()
 
 
 template <int dim, int fe_degree>
-void LaplaceProblem<dim,fe_degree>::setup_system ()
+void LaplaceProblem<dim,fe_degree>::setup_system (int n_partitions)
 {
   system_matrix.clear();
 
   dof_handler.distribute_dofs (fe);
 
-  constraints.clear();
+  partitioner.reset(new GpuPartitioner(dof_handler,n_partitions));
+
+  // set up global constraints
+
+  global_constraints.clear();
+
+  DoFTools::make_hanging_node_constraints(dof_handler,
+                                          global_constraints);
+
   VectorTools::interpolate_boundary_values (dof_handler,
                                             0,
                                             ZeroFunction<dim>(),
-                                            constraints);
-  DoFTools::make_hanging_node_constraints(dof_handler,constraints);
-  constraints.close();
+                                            global_constraints);
 
-  system_matrix.reinit (dof_handler, constraints);
+  DoFTools::make_hanging_node_constraints(dof_handler,global_constraints);
+  global_constraints.close();
 
-  dst.reinit (system_matrix.n());
-  src.reinit (system_matrix.n());
+
+  // set up per-partition constraints
+  partition_constraints.resize(partitioner->n_partitions());
+
+  for(int i=0; i<partitioner->n_partitions(); ++i) {
+
+    IndexSet locally_relevant_dofs;
+    partitioner->extract_locally_relevant_dofs (i,locally_relevant_dofs);
+
+    partition_constraints[i].clear();
+
+    partition_constraints[i].reinit(locally_relevant_dofs);
+
+    DoFTools::make_hanging_node_constraints(dof_handler,
+                                            partition_constraints[i]);
+
+    VectorTools::interpolate_boundary_values (dof_handler,
+                                              0,
+                                              ZeroFunction<dim>(),
+                                              partition_constraints[i]);
+
+    DoFTools::make_hanging_node_constraints(dof_handler,partition_constraints[i]);
+    partition_constraints[i].close();
+  }
+
+  system_matrix.reinit (dof_handler, partitioner, partition_constraints);
+
+  dst.reinit (partitioner);
+  src.reinit (partitioner);
 }
 
 
@@ -139,13 +175,30 @@ void LaplaceProblem<dim,fe_degree>::solve ()
   // IC
   dst = 0.1;
 
+  for(int i = 0; i < 10; ++i) {
+    dst.swap(src);
+
+    system_matrix.vmult(dst,src);
+  }
+
+  for(int i = 0; i < partitioner->n_partitions(); ++i) {
+    cudaSetDevice(partitioner->get_partition_id(i));
+    cudaDeviceSynchronize();
+  }
+
+  time.restart();
+
+
   for(int i = 0; i < n_iterations; ++i) {
     dst.swap(src);
 
     system_matrix.vmult(dst,src);
   }
 
-  cudaDeviceSynchronize();
+  for(int i = 0; i < partitioner->n_partitions(); ++i) {
+    cudaSetDevice(partitioner->get_partition_id(i));
+    cudaDeviceSynchronize();
+  }
 
   time.stop();
 
@@ -156,6 +209,11 @@ void LaplaceProblem<dim,fe_degree>::solve ()
 template <int dim, int fe_degree>
 void LaplaceProblem<dim,fe_degree>::run (int n_ref)
 {
+#ifdef BMOP_N_GPUS
+  int n_partitions = BMOP_N_GPUS;
+#else
+  int n_partitions = 1;
+#endif
 
 #ifdef BALL_GRID
   domain_case_t domain = BALL;
@@ -173,7 +231,7 @@ void LaplaceProblem<dim,fe_degree>::run (int n_ref)
                   pseudo_adaptive_grid, n_ref);
 
 
-  setup_system ();
+  setup_system (n_partitions);
   solve ();
 }
 
@@ -224,7 +282,7 @@ int main (int argc, char **argv)
     return 1;
   }
 
-  GrowingVectorMemory<GpuVector<number> >::release_unused_memory();
+  GrowingVectorMemory<MultiGpuVector<number> >::release_unused_memory();
 
   return 0;
 }

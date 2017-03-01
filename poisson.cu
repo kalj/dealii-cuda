@@ -34,6 +34,7 @@
 #include <sstream>
 
 #include "matrix_free_gpu/defs.h"
+#include "matrix_free_gpu/gpu_partitioner.h"
 #include "matrix_free_gpu/multi_gpu_vec.h"
 #include "matrix_free_gpu/cuda_utils.cuh"
 
@@ -63,12 +64,12 @@ private:
   void solve ();
   void output_results (const unsigned int cycle) const;
 
-  Triangulation<dim>                    triangulation;
-  FE_Q<dim>                             fe;
-  DoFHandler<dim>                       dof_handler;
-  std::shared_ptr<const GpuPartitioner>       partitioner;
-  std::vector<ConstraintMatrix>         partition_constraints;
-  ConstraintMatrix                      global_constraints;
+  Triangulation<dim>                       triangulation;
+  FE_Q<dim>                                fe;
+  DoFHandler<dim>                          dof_handler;
+  std::shared_ptr<const GpuPartitioner>    partitioner;
+  std::vector<ConstraintMatrix>            partition_constraints;
+  ConstraintMatrix                         global_constraints;
 
   typedef MultiGpuVector<number>                         VectorType;
   // typedef GpuVector<number>                           VectorType;

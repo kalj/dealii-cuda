@@ -42,7 +42,7 @@ namespace dealii
 
     MultiGpuList<T> & operator=(const std::vector<std::vector<T> > &host_arr);
 
-    // void set_local(const std::vector<T> &host_arr);
+    void swap(MultiGpuList<T> &other);
 
     void clear();
 

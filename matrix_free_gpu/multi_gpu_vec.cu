@@ -365,6 +365,19 @@ namespace dealii
                                           partitioner->get_partition_id(owning_part));
   }
 
+  template <typename Number>
+  void MultiGpuVector<Number>::swap(MultiGpuVector<Number> &other)
+  {
+    vec.swap(other.vec);
+    import_data.swap(other.import_data);
+    import_indices.swap(other.import_indices);
+    local_sizes.swap(other.local_sizes);
+    partitioner.swap(other.partitioner);
+
+    std::swap(global_size,other.global_size);
+    std::swap(vector_is_ghosted,other.vector_is_ghosted);
+    std::swap(vector_is_compressed,other.vector_is_compressed);
+  }
 
   //=============================================================================
   // Element wise operations (mult. with scalar, vector addition)
