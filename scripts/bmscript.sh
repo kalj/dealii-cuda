@@ -43,6 +43,9 @@ if [ "$6" == "float" ] ; then
     USE_FLOATS=1
 fi
 
+if [[ $7 =~ ngpus=[1-9] ]] ; then
+    USE_NGPUS=${7#ngpus=}
+fi
 
 
 if [ "$ADAPTIVE" == 1 ] && [ "$HANGING" != 1 ] ; then
@@ -99,6 +102,11 @@ function comp()
         if [ "$USE_FLOATS" == '1' ] ; then
             CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DBMOP_USE_FLOATS"
         fi
+
+        if [ -n "$USE_NGPUS" ] ; then
+            CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -DBMOP_N_GPUS=${USE_NGPUS}"
+        fi
+
 
         cmake -DCMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -march=native --std=c++11"  -DCMAKE_BUILD_TYPE=Release ../ 2>>compile.log >>compile.log
 
