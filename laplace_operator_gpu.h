@@ -16,7 +16,6 @@
 
 #include "matrix_free_gpu/defs.h"
 #include "matrix_free_gpu/gpu_vec.h"
-#include "matrix_free_gpu/gpu_list.h"
 #include "matrix_free_gpu/gpu_array.cuh"
 #include "matrix_free_gpu/matrix_free_gpu.h"
 #include "matrix_free_gpu/fee_gpu.cuh"
@@ -260,7 +259,7 @@ struct LocalOperator {
     phi->submit_gradient (coefficient[phi->get_global_q(q)] * phi->get_gradient(q), q);
   }
 
-  // what to do fore each cell
+  // what to do for each cell
   __device__ void cell_apply (Number                          *dst,
                               const Number                    *src,
                               const typename MatrixFreeGpu<dim,Number>::GpuData *gpu_data,
@@ -362,7 +361,7 @@ struct DiagonalLocalOperator {
   static const unsigned int n_local_dofs = ipow<n_dofs_1d,dim>::val;
   static const unsigned int n_q_points = ipow<n_q_points_1d,dim>::val;
 
-  // what to do fore each cell
+  // what to do for each cell
   __device__ void cell_apply (Number                          *dst,
                               const typename MatrixFreeGpu<dim,Number>::GpuData *gpu_data,
                               const unsigned int cell,

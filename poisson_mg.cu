@@ -53,8 +53,6 @@ typedef double level_number;
 using namespace dealii;
 
 // explicit instantiation of Multigrid
-#include <deal.II/multigrid/multigrid.templates.h>
-template class Multigrid< GpuVector<level_number> >;
 
 
 template <typename Number>
@@ -446,7 +444,6 @@ void LaplaceProblem<dim,fe_degree>::solve ()
                << "s/" << time.wall_time() << "s\n";
   time.restart();
 
-  // XXX: this should be with 'number' precision, but LevelMatrixType is with floats
   MGCoarseIterative<LevelMatrixType,level_number> mg_coarse;
   mg_coarse.initialize(mg_matrices[0]);
 
