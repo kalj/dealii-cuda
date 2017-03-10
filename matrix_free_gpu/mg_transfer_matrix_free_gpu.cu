@@ -28,7 +28,7 @@
 #include <deal.II/fe/fe_tools.h>
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/multigrid/mg_tools.h>
-// #include <deal.II/multigrid/mg_transfer_matrix_free.h>
+#include <deal.II/multigrid/multigrid.templates.h>
 #include <deal.II/multigrid/mg_transfer_internal.h>
 #include "mg_transfer_matrix_free_gpu.h"
 
@@ -94,13 +94,11 @@ void MGTransferMatrixFreeGpu<dim,Number>::initialize_constraints
 template <int dim, typename Number>
 void MGTransferMatrixFreeGpu<dim,Number>::clear ()
 {
-  // this->MGLevelGlobalTransfer<GpuVector<Number> >::clear();
   fe_degree = 0;
   element_is_continuous = false;
   n_components = 0;
   n_child_cell_dofs = 0;
   level_dof_indices.clear();
-  // parent_child_connect.clear();
   child_offset_in_parent.clear();
   n_owned_level_cells.clear();
   weights_on_refined.clear();
@@ -120,20 +118,10 @@ void MGTransferMatrixFreeGpu<dim,Number>::setup_copy_indices(const DoFHandler<di
 
   const unsigned int nlevels = mg_dof.get_triangulation().n_global_levels();
 
-
-  Assert((copy_indices_global_mine.size() == 0) &&
-         (copy_indices_level_mine.size() == 0),
-         ExcMessage("Only implemented for non-distributed case"));
-
   for(int i=0; i<nlevels; ++i) {
-    Assert((copy_indices[i].size() == copy_indices_global_mine[i].size()) &&
-           (copy_indices[i].size() == copy_indices_level_mine[i].size()),
-           ExcMessage("Length mismatch of copy_indices* subarrays"));
-    for(int j=0; j<copy_indices[i].size(); ++j) {
-      Assert((copy_indices[i][j] == copy_indices_global_mine[i][j]) &&
-             (copy_indices[i][j] == copy_indices_level_mine[i][j]),
-             ExcMessage("content mismatch of copy_indices* mappings"));
-    }
+    Assert((copy_indices_global_mine[i].size() == 0) &&
+           (copy_indices_level_mine[i].size() == 0),
+           ExcMessage("Only implemented for non-distributed case"));
   }
 
   // all set, know we can safely throw away the latter two arrays
@@ -863,6 +851,8 @@ template class MGMatrixBase<GpuVector<float> >;
 template class MGSmootherBase< GpuVector<float> >;
 template class MGCoarseGridBase< GpuVector<float> >;
 
+template class Multigrid< GpuVector<float> >;
+template class Multigrid< GpuVector<double> >;
 
 //=============================================================================
 

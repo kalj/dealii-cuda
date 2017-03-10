@@ -20,8 +20,17 @@ public:
     for(int i = 0; i < size; ++i) apa+=arr[i]*arr[i];
     return apa;
   }
+
+  MAYBECUDA_HOSTDEV GpuArray<size,Number> operator-() const;
 };
 
+template <int size, typename Number>
+MAYBECUDA_HOSTDEV GpuArray<size,Number> GpuArray<size,Number>::operator-() const
+{
+  GpuArray<size,Number> a;
+  for(int i = 0; i < size; ++i) a.arr[i] = -arr[i];
+  return a;
+}
 
 template <int size, typename Number>
 MAYBECUDA_HOSTDEV GpuArray<size,Number> operator*(const GpuArray<size,Number>&v, Number a)
@@ -32,6 +41,7 @@ MAYBECUDA_HOSTDEV GpuArray<size,Number> operator*(const GpuArray<size,Number>&v,
   }
   return res;
 }
+
 template <int size, typename Number>
 inline MAYBECUDA_HOSTDEV GpuArray<size,Number> operator*(Number a, const GpuArray<size,Number>&v)
 {

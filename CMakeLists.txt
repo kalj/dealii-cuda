@@ -63,41 +63,42 @@ SET(MATRIX_FREE_GPU_SOURCES
   matrix_free_gpu/gpu_partitioner.cc
   )
 
-CUDA_ADD_LIBRARY(matrix_free_lib ${MATRIX_FREE_GPU_SOURCES})
+SET(LIBNAME matrix_free_gpu_lib)
+CUDA_ADD_LIBRARY(${LIBNAME} ${MATRIX_FREE_GPU_SOURCES})
 
 # tests
 
 CUDA_ADD_EXECUTABLE(test_spm test_spm.cu)
-TARGET_LINK_LIBRARIES(test_spm matrix_free_lib ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
+TARGET_LINK_LIBRARIES(test_spm ${LIBNAME} ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_mg_transfer test_mg_transfer.cc)
-TARGET_LINK_LIBRARIES(test_mg_transfer matrix_free_lib ${LIBRARIES})
+TARGET_LINK_LIBRARIES(test_mg_transfer ${LIBNAME} ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_hanging_nodes_gpu test_hanging_nodes_gpu.cu)
-TARGET_LINK_LIBRARIES(test_hanging_nodes_gpu matrix_free_lib ${LIBRARIES})
+TARGET_LINK_LIBRARIES(test_hanging_nodes_gpu ${LIBNAME} ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_hanging_node_interpolation test_hanging_node_interpolation.cu)
 TARGET_LINK_LIBRARIES(test_hanging_node_interpolation ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_dot test_dot.cpp)
-TARGET_LINK_LIBRARIES(test_dot matrix_free_lib ${LIBRARIES})
+TARGET_LINK_LIBRARIES(test_dot ${LIBNAME} ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_laplace_op test_laplace_op.cu poisson_common.cc laplace_operator_cpu.cc)
-TARGET_LINK_LIBRARIES(test_laplace_op matrix_free_lib ${LIBRARIES})
+TARGET_LINK_LIBRARIES(test_laplace_op ${LIBNAME} ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(test_partitioner test_partitioner.cc)
-TARGET_LINK_LIBRARIES(test_partitioner matrix_free_lib ${LIBRARIES})
+TARGET_LINK_LIBRARIES(test_partitioner ${LIBNAME} ${LIBRARIES})
 
 # solvers
 
 CUDA_ADD_EXECUTABLE(poisson_spm poisson_spm.cu poisson_common.cc)
-TARGET_LINK_LIBRARIES(poisson_spm matrix_free_lib ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
+TARGET_LINK_LIBRARIES(poisson_spm ${LIBNAME} ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(poisson poisson.cu poisson_common.cc)
-TARGET_LINK_LIBRARIES(poisson matrix_free_lib ${LIBRARIES})
+TARGET_LINK_LIBRARIES(poisson ${LIBNAME} ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(poisson_mg poisson_mg.cu poisson_common.cc)
-TARGET_LINK_LIBRARIES(poisson_mg matrix_free_lib ${LIBRARIES} )
+TARGET_LINK_LIBRARIES(poisson_mg ${LIBNAME} ${LIBRARIES} )
 
 CUDA_ADD_EXECUTABLE(poisson_cpu poisson_cpu.cc poisson_common.cc laplace_operator_cpu.cc)
 TARGET_LINK_LIBRARIES(poisson_cpu ${LIBRARIES})
@@ -108,13 +109,13 @@ TARGET_LINK_LIBRARIES(poisson_mg_cpu ${LIBRARIES})
 # benchmarks
 
 CUDA_ADD_EXECUTABLE(bmop bmop.cu poisson_common.cc)
-TARGET_LINK_LIBRARIES(bmop matrix_free_lib ${LIBRARIES} )
+TARGET_LINK_LIBRARIES(bmop ${LIBNAME} ${LIBRARIES} )
 
 CUDA_ADD_EXECUTABLE(bmop_mg bmop_mg.cu poisson_common.cc)
-TARGET_LINK_LIBRARIES(bmop_mg matrix_free_lib ${LIBRARIES} )
+TARGET_LINK_LIBRARIES(bmop_mg ${LIBNAME} ${LIBRARIES} )
 
 CUDA_ADD_EXECUTABLE(bmop_spm bmop_spm.cu poisson_common.cc)
-TARGET_LINK_LIBRARIES(bmop_spm matrix_free_lib ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
+TARGET_LINK_LIBRARIES(bmop_spm ${LIBNAME} ${CUDA_cusparse_LIBRARY} ${LIBRARIES})
 
 CUDA_ADD_EXECUTABLE(bmop-cpu bmop-cpu.cc laplace_operator_cpu.cc poisson_common.cc)
 TARGET_LINK_LIBRARIES(bmop-cpu ${LIBRARIES})
