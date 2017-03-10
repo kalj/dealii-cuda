@@ -248,7 +248,7 @@ void ReinitHelper<dim,Number>::setup_cell_arrays(const unsigned int c)
   if(update_flags & update_gradients)
     inv_jac_host.resize(n_cells*rowlength*dim*dim);
 
-#if MATRIX_FREE_HANGING_NODES
+#ifdef MATRIX_FREE_HANGING_NODES
     constraint_mask_host.resize(n_cells);
 #endif
 }
