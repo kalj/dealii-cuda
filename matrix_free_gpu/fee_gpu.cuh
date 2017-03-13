@@ -180,7 +180,11 @@ __device__ FEEvaluationGpu<dim,fe_degree,Number>::FEEvaluationGpu(int cellid,
 {
   values = shdata->values;
   loc2glob = data->loc2glob+rowlength*cellid;
+#ifdef MATRIX_FREE_UNIFORM_MESH
+  inv_jac = data->inv_jac+cellid;
+#else
   inv_jac = data->inv_jac+rowlength*cellid;
+#endif
   JxW = data->JxW+rowlength*cellid;
   quadrature_points = data->quadrature_points+rowlength*cellid;
 
@@ -218,7 +222,12 @@ FEEvaluationGpu<dim,fe_degree,Number>::get_gradient(const unsigned int q) const
 {
   // compute J^{-1} * gradients_quad[q]
   gradient_type grad;
+#ifdef MATRIX_FREE_UNIFORM_MESH
+  const Number* J = &inv_jac[0];
+#else
   const Number* J = &inv_jac[q];
+#endif
+
 
   for(int d1=0; d1<dim; d1++) {
 #ifdef MATRIX_FREE_UNIFORM_MESH
@@ -253,7 +262,11 @@ template <int dim, int fe_degree, typename Number>
 __device__ void FEEvaluationGpu<dim,fe_degree,Number>::submit_gradient(const gradient_type &grad, const unsigned int q)
 {
   // compute J^{-T} * grad * det(J) *w_q
-  const Number *J = &inv_jac[q];
+#ifdef MATRIX_FREE_UNIFORM_MESH
+  const Number* J = &inv_jac[0];
+#else
+  const Number* J = &inv_jac[q];
+#endif
   const Number jxw = JxW[q];
 
   for(int d1=0; d1<dim; d1++) {

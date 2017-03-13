@@ -245,8 +245,14 @@ void ReinitHelper<dim,Number>::setup_cell_arrays(const unsigned int c)
   if(update_flags & update_JxW_values)
     JxW_host.resize(n_cells*rowlength);
 
-  if(update_flags & update_gradients)
+  if(update_flags & update_gradients) {
+#ifdef MATRIX_FREE_UNIFORM_MESH
+    // for uniform meshes, it is enough to store one number per element
+    inv_jac_host.resize(n_cells);
+#else
     inv_jac_host.resize(n_cells*rowlength*dim*dim);
+#endif
+  }
 
 #ifdef MATRIX_FREE_HANGING_NODES
     constraint_mask_host.resize(n_cells);
@@ -323,7 +329,12 @@ void ReinitHelper<dim,Number>::get_cell_data(const T& cell, const unsigned int c
         for(int d2=0; d2<dim; ++d2)
           jacs_conv[i][d1][d2] = jacs[i][d1][d2];
     }
+#ifdef MATRIX_FREE_UNIFORM_MESH
+    // for uniform meshes, it is enough to store one number per element
+    inv_jac_host[cellid] = jacs_conv[0][0][0];
+#else
     memcpy(&inv_jac_host[cellid*rowlength*dim*dim],jacs_conv.data(),qpts_per_cell*sizeof(DerivativeForm<1,dim,dim,Number>));
+#endif
   }
 }
 
@@ -397,6 +408,12 @@ void ReinitHelper<dim,Number>::alloc_and_copy_arrays(const unsigned int c)
   // inverse jacobians
   if(update_flags & update_gradients) {
 
+#ifdef MATRIX_FREE_UNIFORM_MESH
+    // for uniform meshes, it is enough to store one number per element
+    alloc_and_copy(&data->inv_jac[c], inv_jac_host,
+                   n_cells);
+#else
+
     // now this has index order:  cellid*qpts_per_cell*dim*dim + q*dim*dim + i
     // this is not good at all?
 
@@ -415,6 +432,7 @@ void ReinitHelper<dim,Number>::alloc_and_copy_arrays(const unsigned int c)
     }
     alloc_and_copy(&data->inv_jac[c], inv_jac_host,
                    n_cells*dim*dim*rowlength);
+#endif
   }
 
 #ifdef MATRIX_FREE_HANGING_NODES

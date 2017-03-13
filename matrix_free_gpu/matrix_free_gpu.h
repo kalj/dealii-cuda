@@ -443,7 +443,11 @@ std::size_t MatrixFreeGpu<dim,Number>::memory_consumption() const
   for(int c = 0; c < num_colors; ++c) {
     bytes +=
       n_cells[c]*rowlength*sizeof(unsigned int)     // loc2glob
+#ifdef MATRIX_FREE_UNIFORM_MESH
+      + n_cells[c]*sizeof(Number) // inv_jac
+#else
       + n_cells[c]*rowlength*dim*dim*sizeof(Number) // inv_jac
+#endif
       + n_cells[c]*rowlength*sizeof(Number)         // JxW
       + n_cells[c]*rowlength*sizeof(point_type);    // quadrature_points
 #ifdef MATRIX_FREE_HANGING_NODES
