@@ -300,7 +300,7 @@ private:
                           GpuVector<Number>       &dst,
                           const GpuVector<Number> &src) const;
 
-  void set_constrained_dofs(GpuVector<Number>& vec, unsigned int level, Number val) const;
+  void set_mg_constrained_dofs(GpuVector<Number>& vec, unsigned int level, Number val) const;
 
   SmartPointer< const MGConstrainedDoFs, MGTransferMatrixFreeGpu<dim,Number> > 	mg_constrained_dofs;
 

@@ -602,7 +602,7 @@ void MGTransferMatrixFreeGpu<dim,Number>
   dst = 0;
 
   GpuVector<Number> src_with_bc(src);
-  set_constrained_dofs(src_with_bc,to_level-1,0);
+  set_mg_constrained_dofs(src_with_bc,to_level-1,0);
 
   if (fe_degree == 1)
     coarse_cell_loop<MGProlongateBody,1>(to_level, dst, src_with_bc);
@@ -617,7 +617,7 @@ void MGTransferMatrixFreeGpu<dim,Number>
 
   // now set constrained dofs to 0
 
-  // set_constrained_dofs(dst,to_level,0);
+  // set_mg_constrained_dofs(dst,to_level,0);
 
 }
 
@@ -647,14 +647,14 @@ void MGTransferMatrixFreeGpu<dim,Number>
   else
     AssertThrow(false, ExcNotImplemented("Only degrees 1 through 4 implemented."));
 
-  set_constrained_dofs(increment,from_level-1,0);
+  set_mg_constrained_dofs(increment,from_level-1,0);
 
   dst.add(increment);
 
 }
 
 template <typename Number>
-__global__ void set_constrained_dofs_kernel(Number *vec, const unsigned int *indices,
+__global__ void set_mg_constrained_dofs_kernel(Number *vec, const unsigned int *indices,
                                             unsigned int len, Number val)
 {
   const unsigned int idx = threadIdx.x + blockIdx.x*blockDim.x;
@@ -664,7 +664,7 @@ __global__ void set_constrained_dofs_kernel(Number *vec, const unsigned int *ind
 }
 
 template <int dim, typename Number>
-void MGTransferMatrixFreeGpu<dim,Number>::set_constrained_dofs(GpuVector<Number>& vec,
+void MGTransferMatrixFreeGpu<dim,Number>::set_mg_constrained_dofs(GpuVector<Number>& vec,
                                                                unsigned int level,
                                                                Number val) const
 {
@@ -674,9 +674,9 @@ void MGTransferMatrixFreeGpu<dim,Number>::set_constrained_dofs(GpuVector<Number>
   dim3 bk_dim(bksize);
   dim3 gd_dim(nblocks);
 
-  set_constrained_dofs_kernel<<<gd_dim,bk_dim>>>(vec.getData(),
-                                                 dirichlet_indices[level].getDataRO(),
-                                                 len,val);
+  set_mg_constrained_dofs_kernel<<<gd_dim,bk_dim>>>(vec.getData(),
+                                                    dirichlet_indices[level].getDataRO(),
+                                                    len,val);
   cudaAssertNoError();
 }
 
