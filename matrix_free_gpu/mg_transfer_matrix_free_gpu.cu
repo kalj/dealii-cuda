@@ -668,16 +668,19 @@ void MGTransferMatrixFreeGpu<dim,Number>::set_mg_constrained_dofs(GpuVector<Numb
                                                                unsigned int level,
                                                                Number val) const
 {
-  const unsigned int bksize = 256;
   const unsigned int len = dirichlet_indices[level].size();
-  const unsigned int nblocks = (len-1)/bksize + 1;
-  dim3 bk_dim(bksize);
-  dim3 gd_dim(nblocks);
+  if(len > 0) {
 
-  set_mg_constrained_dofs_kernel<<<gd_dim,bk_dim>>>(vec.getData(),
-                                                    dirichlet_indices[level].getDataRO(),
-                                                    len,val);
-  cudaAssertNoError();
+    const unsigned int bksize = 256;
+    const unsigned int nblocks = (len-1)/bksize + 1;
+    dim3 bk_dim(bksize);
+    dim3 gd_dim(nblocks);
+
+    set_mg_constrained_dofs_kernel<<<gd_dim,bk_dim>>>(vec.getData(),
+                                                      dirichlet_indices[level].getDataRO(),
+                                                      len,val);
+    cudaAssertNoError();
+  }
 }
 
 
