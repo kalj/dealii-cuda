@@ -884,24 +884,46 @@ namespace dealii
 
     // copy ghosted values from ghost_dofs section on other devices into
     // import_data on 'this' device
-    for(int to=0; to<partitioner->n_partitions(); ++to) {
-      // CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
-      for(int from=0; from<partitioner->n_partitions(); ++from) {
-        if(to != from) {
 
+    // c is size of consecutive chunk   4, 2, 1
+    for(int cs=partitioner->n_partitions()/2; cs>=1 ; cs/= 2) {
+
+      const unsigned int nchunks = partitioner->n_partitions()/cs/2;
+      // now one partition is 0...cs-1, 2cs..3cs-1, ...
+
+      // k is offset into next chunk other partition
+      for(int k=0; k<cs; ++k) {
+
+        // both directions
+        for(int dir=0; dir<2; ++dir) {
+
+          // now communicate t with t+cs+(k%cs) both directions, for relevant ts
+          for(int chunk=0; chunk<nchunks; ++chunk) {
+            for(int i=0; i<cs; ++i) {
+
+              const int t = 2*chunk*cs + i;
+              const int t2 = (2*chunk+1)*cs+((i+k)%cs);
+
+              const int from = dir==0 ? t  : t2;
+              const int to =   dir==0 ? t2 : t;
+
+              if (partitioner->n_ghost_dofs(from,to) > 0) {
 #ifndef FAKE_MULTI_GPU
-          CUDA_CHECK_SUCCESS(cudaMemcpyPeer(import_data.getData(to)+partitioner->import_data_offset(to,from),
-                                            partitioner->get_partition_id(to),
-                                            vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
-                                            partitioner->get_partition_id(from),
-                                            partitioner->n_ghost_dofs(from,to)*sizeof(Number)));
-#else
-          CUDA_CHECK_SUCCESS(cudaMemcpy(import_data.getData(to)+partitioner->import_data_offset(to,from),
-                                        vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
-                                        partitioner->n_ghost_dofs(from,to)*sizeof(Number),
-                                        cudaMemcpyDeviceToDevice));
-#endif
 
+                CUDA_CHECK_SUCCESS(cudaMemcpyPeer(import_data.getData(to)+partitioner->import_data_offset(to,from),
+                                                  partitioner->get_partition_id(to),
+                                                  vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
+                                                  partitioner->get_partition_id(from),
+                                                  partitioner->n_ghost_dofs(from,to)*sizeof(Number)));
+#else
+                CUDA_CHECK_SUCCESS(cudaMemcpy(import_data.getData(to)+partitioner->import_data_offset(to,from),
+                                              vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
+                                              partitioner->n_ghost_dofs(from,to)*sizeof(Number),
+                                              cudaMemcpyDeviceToDevice));
+#endif
+              }
+            }
+          }
         }
       }
     }
@@ -929,23 +951,46 @@ namespace dealii
 
     // copy ghosted values from import_data on device `from` into
     // ghost_dofs section on device `to`
-    for(int to=0; to<partitioner->n_partitions(); ++to) {
-      // CUDA_CHECK_SUCCESS(cudaSetDevice(partitioner->get_partition_id(i)));
-      for(int from=0; from<partitioner->n_partitions(); ++from) {
-        if(to != from) {
 
+    // c is size of consecutive chunk   4, 2, 1
+    for(int cs=partitioner->n_partitions()/2; cs>=1 ; cs/= 2) {
+
+      const unsigned int nchunks = partitioner->n_partitions()/cs/2;
+      // now one partition is 0...cs-1, 2cs..3cs-1, ...
+
+      // k is offset into next chunk other partition
+      for(int k=0; k<cs; ++k) {
+
+        // both directions
+        for(int dir=0; dir<2; ++dir) {
+
+          // now communicate t with t+cs+(k%cs) both directions, for relevant ts
+          for(int chunk=0; chunk<nchunks; ++chunk) {
+            for(int i=0; i<cs; ++i) {
+
+              const int t = 2*chunk*cs + i;
+              const int t2 = (2*chunk+1)*cs+((i+k)%cs);
+
+              const int from = dir==0 ? t  : t2;
+              const int to =   dir==0 ? t2 : t;
+
+              if (partitioner->n_ghost_dofs(to,from) > 0) {
 #ifndef FAKE_MULTI_GPU
-          CUDA_CHECK_SUCCESS(cudaMemcpyPeer(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
-                                            partitioner->get_partition_id(to),
-                                            import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
-                                            partitioner->get_partition_id(from),
-                                            partitioner->n_ghost_dofs(to,from)*sizeof(Number)));
+
+                CUDA_CHECK_SUCCESS(cudaMemcpyPeer(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
+                                                  partitioner->get_partition_id(to),
+                                                  import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
+                                                  partitioner->get_partition_id(from),
+                                                  partitioner->n_ghost_dofs(to,from)*sizeof(Number)));
 #else
-          CUDA_CHECK_SUCCESS(cudaMemcpy(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
-                                        import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
-                                        partitioner->n_ghost_dofs(to,from)*sizeof(Number),
-                                        cudaMemcpyDeviceToDevice));
+                CUDA_CHECK_SUCCESS(cudaMemcpy(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
+                                              import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
+                                              partitioner->n_ghost_dofs(to,from)*sizeof(Number),
+                                              cudaMemcpyDeviceToDevice));
 #endif
+              }
+            }
+          }
         }
       }
     }
