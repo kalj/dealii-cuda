@@ -885,6 +885,11 @@ namespace dealii
     // copy ghosted values from ghost_dofs section on other devices into
     // import_data on 'this' device
 
+    cudaStream_t stream[partitioner->n_partitions()/2];
+    for(int i=0; i<partitioner->n_partitions()/2; ++i) {
+      cudaStreamCreate(&stream[i]);
+    }
+
     // c is size of consecutive chunk   4, 2, 1
     for(int cs=partitioner->n_partitions()/2; cs>=1 ; cs/= 2) {
 
@@ -909,12 +914,11 @@ namespace dealii
 
               if (partitioner->n_ghost_dofs(from,to) > 0) {
 #ifndef FAKE_MULTI_GPU
-
-                CUDA_CHECK_SUCCESS(cudaMemcpyPeer(import_data.getData(to)+partitioner->import_data_offset(to,from),
-                                                  partitioner->get_partition_id(to),
-                                                  vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
-                                                  partitioner->get_partition_id(from),
-                                                  partitioner->n_ghost_dofs(from,to)*sizeof(Number)));
+                CUDA_CHECK_SUCCESS(cudaMemcpyPeerAsync(import_data.getData(to)+partitioner->import_data_offset(to,from),
+                                                       partitioner->get_partition_id(to),
+                                                       vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
+                                                       partitioner->get_partition_id(from),
+                                                       partitioner->n_ghost_dofs(from,to)*sizeof(Number), stream[i+chunk*cs]));
 #else
                 CUDA_CHECK_SUCCESS(cudaMemcpy(import_data.getData(to)+partitioner->import_data_offset(to,from),
                                               vec[from]+local_sizes[from]+partitioner->ghost_dofs_offset(from,to),
@@ -926,6 +930,10 @@ namespace dealii
           }
         }
       }
+    }
+
+    for(int i=0; i<partitioner->n_partitions()/2; ++i) {
+      cudaStreamDestroy(stream[i]);
     }
 
     // on this device, merge stuff from import_data into the indices in
@@ -952,6 +960,11 @@ namespace dealii
     // copy ghosted values from import_data on device `from` into
     // ghost_dofs section on device `to`
 
+    cudaStream_t stream[partitioner->n_partitions()/2];
+    for(int i=0; i<partitioner->n_partitions()/2; ++i) {
+      cudaStreamCreate(&stream[i]);
+    }
+
     // c is size of consecutive chunk   4, 2, 1
     for(int cs=partitioner->n_partitions()/2; cs>=1 ; cs/= 2) {
 
@@ -976,12 +989,11 @@ namespace dealii
 
               if (partitioner->n_ghost_dofs(to,from) > 0) {
 #ifndef FAKE_MULTI_GPU
-
-                CUDA_CHECK_SUCCESS(cudaMemcpyPeer(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
-                                                  partitioner->get_partition_id(to),
-                                                  import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
-                                                  partitioner->get_partition_id(from),
-                                                  partitioner->n_ghost_dofs(to,from)*sizeof(Number)));
+                CUDA_CHECK_SUCCESS(cudaMemcpyPeerAsync(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
+                                                       partitioner->get_partition_id(to),
+                                                       import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
+                                                       partitioner->get_partition_id(from),
+                                                       partitioner->n_ghost_dofs(to,from)*sizeof(Number), stream[i+chunk*cs]));
 #else
                 CUDA_CHECK_SUCCESS(cudaMemcpy(vec[to]+local_sizes[to]+partitioner->ghost_dofs_offset(to,from),
                                               import_data.getDataRO(from)+partitioner->import_data_offset(from,to),
@@ -993,6 +1005,10 @@ namespace dealii
           }
         }
       }
+    }
+
+    for(int i=0; i<partitioner->n_partitions()/2; ++i) {
+      cudaStreamDestroy(stream[i]);
     }
 
     vector_is_ghosted = true;
