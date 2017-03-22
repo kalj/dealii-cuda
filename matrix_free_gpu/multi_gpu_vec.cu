@@ -885,7 +885,13 @@ namespace dealii
     // copy ghosted values from ghost_dofs section on other devices into
     // import_data on 'this' device
 
+    for(int i=0; i<partitioner->n_partitions(); ++i) {
+      cudaSetDevice(i);
+      cudaDeviceSynchronize();
+    }
+
     cudaStream_t stream[partitioner->n_partitions()/2];
+    cudaSetDevice(0);
     for(int i=0; i<partitioner->n_partitions()/2; ++i) {
       cudaStreamCreate(&stream[i]);
     }
@@ -932,7 +938,9 @@ namespace dealii
       }
     }
 
+
     for(int i=0; i<partitioner->n_partitions()/2; ++i) {
+      cudaStreamSynchronize(stream[i]);
       cudaStreamDestroy(stream[i]);
     }
 
@@ -956,11 +964,16 @@ namespace dealii
     // import_indices
     copy_with_indices(import_data,*this,import_indices);
 
+    for(int i=0; i<partitioner->n_partitions(); ++i) {
+      cudaSetDevice(i);
+      cudaDeviceSynchronize();
+    }
 
     // copy ghosted values from import_data on device `from` into
     // ghost_dofs section on device `to`
 
     cudaStream_t stream[partitioner->n_partitions()/2];
+    cudaSetDevice(0);
     for(int i=0; i<partitioner->n_partitions()/2; ++i) {
       cudaStreamCreate(&stream[i]);
     }
@@ -1008,6 +1021,7 @@ namespace dealii
     }
 
     for(int i=0; i<partitioner->n_partitions()/2; ++i) {
+      cudaStreamSynchronize(stream[i]);
       cudaStreamDestroy(stream[i]);
     }
 
