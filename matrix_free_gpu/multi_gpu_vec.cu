@@ -18,10 +18,17 @@
 #define COPY_WITH_INDEX_BKSIZE 256
 
 
-
 namespace dealii
 {
-
+  // FIXME: try out
+  // * Persistent streams
+  // * one stream per device use, concurrent bidirectional transfer. source GPU owns stream
+  // * finally, put kernel onto the per-device stream
+  // * extract the dependent cells into separate loop, and overlap
+  //  use this to have cudaStream_t in API
+  // #include <cuda_runtime.h>
+  //
+  // then have to add include dir and link with libcudart
 
 
   //=============================================================================
